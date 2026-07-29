@@ -10,3 +10,4 @@ requests>=2.31
 
 # dev/test only
 pytest>=8.0
+fpdf2>=2.7

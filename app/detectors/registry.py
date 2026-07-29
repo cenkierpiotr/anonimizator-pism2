@@ -7,7 +7,7 @@ szansę fałszywego trafienia na przypadkowym ciągu znaków.
 
 from __future__ import annotations
 
-from app.detectors import iban, nip, pesel, regon
+from app.detectors import iban, id_card, land_register, nip, pesel, regon, vehicle
 from app.detectors.base import Detector
 
 CHECKSUM_DETECTORS: list[Detector] = [
@@ -15,6 +15,9 @@ CHECKSUM_DETECTORS: list[Detector] = [
     nip.detector,
     regon.detector,
     iban.detector,
+    land_register.detector,
+    id_card.detector,
+    vehicle.detector,
 ]
 
 BY_NAME: dict[str, Detector] = {d.name: d for d in CHECKSUM_DETECTORS}
