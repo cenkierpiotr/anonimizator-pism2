@@ -63,12 +63,29 @@ class NerConfig:
 
 
 @dataclass
+class LibreOfficeConfig:
+    """Ustawienia pobierania LibreOffice "na żądanie" (obsługa .doc, patrz plan
+    sekcja "Pobieranie LibreOffice na żądanie"). URL/checksum wskazują na
+    artefakt hostowany we własnym repo GitHub Releases - do wypełnienia po
+    zbudowaniu i opublikowaniu portable LibreOffice dla Windows (Faza 4)."""
+
+    release_url: str = (
+        "https://github.com/cenkierpiotr/anonimizator-pism/releases/"
+        "download/libreoffice-portable-v1/libreoffice-portable-win64.zip"
+    )
+    # Placeholder - MUSI zostać podmieniony na realny SHA-256 artefaktu przed
+    # pierwszym wydaniem, inaczej download_libreoffice() odmówi weryfikacji.
+    release_sha256: str = ""
+
+
+@dataclass
 class AppConfig:
     category_policies: dict[str, CategoryPolicy] = field(
         default_factory=lambda: dict(DEFAULT_CATEGORY_POLICIES)
     )
     ocr: OcrConfig = field(default_factory=OcrConfig)
     ner: NerConfig = field(default_factory=NerConfig)
+    libreoffice: LibreOfficeConfig = field(default_factory=LibreOfficeConfig)
     # Tryb "date shifting": przesunięcie wszystkich dat o ten sam losowy
     # offset zamiast zostawiania/usuwania - patrz sekcja "Daty i kwoty" w planie.
     date_shifting_enabled: bool = False
