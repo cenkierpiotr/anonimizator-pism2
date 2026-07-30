@@ -1,4 +1,9 @@
-# Anonimizator Pism — plan projektu i uzasadnienia architektoniczne
+# Anonimizator Dokumentów — plan projektu i uzasadnienia architektoniczne
+
+*(Projekt powstawał pod roboczą nazwą "Anonimizator Pism" — poniższy plan
+używa jeszcze tej nazwy w niektórych miejscach jako historyczny zapis decyzji;
+produkt finalnie nazywa się "Anonimizator Dokumentów", zakres funkcjonalny
+się nie zmienił.)
 
 ## Kontekst
 

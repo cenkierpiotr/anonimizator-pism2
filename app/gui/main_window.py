@@ -1,4 +1,4 @@
-"""GUI aplikacji "Anonimizator Pism" (CustomTkinter).
+"""GUI aplikacji "Anonimizator Dokumentów" (CustomTkinter).
 
 Spina istniejący, gotowy backend (`app.main`, `app.pipeline.convert_to_pdf`) -
 ten moduł NIE implementuje żadnej logiki anonimizacji/detekcji, wyłącznie
@@ -148,7 +148,7 @@ class AnonymizerApp(ctk.CTk):
 
     def __init__(self) -> None:
         super().__init__()
-        self.title("Anonimizator Pism")
+        self.title("Anonimizator Dokumentów")
         self.geometry("980x620")
         self.minsize(760, 480)
 
@@ -291,11 +291,11 @@ class AnonymizerApp(ctk.CTk):
 
     def _on_start_anonymize(self) -> None:
         if self.processing:
-            messagebox.showinfo("Anonimizator Pism", "Trwa już przetwarzanie kolejki.")
+            messagebox.showinfo("Anonimizator Dokumentów", "Trwa już przetwarzanie kolejki.")
             return
         keys = self._selected_keys()
         if not keys:
-            messagebox.showinfo("Anonimizator Pism", "Zaznacz co najmniej jeden plik oczekujący.")
+            messagebox.showinfo("Anonimizator Dokumentów", "Zaznacz co najmniej jeden plik oczekujący.")
             return
         self.cancel_event = threading.Event()
         self.pending_keys = keys
@@ -338,7 +338,7 @@ class AnonymizerApp(ctk.CTk):
             if widgets["check_var"].get()
         ]
         if not keys:
-            messagebox.showinfo("Anonimizator Pism", "Zaznacz co najmniej jeden plik do konwersji.")
+            messagebox.showinfo("Anonimizator Dokumentów", "Zaznacz co najmniej jeden plik do konwersji.")
             return
         output_dir = filedialog.askdirectory(title="Wybierz katalog docelowy dla plików PDF")
         if not output_dir:
@@ -348,7 +348,7 @@ class AnonymizerApp(ctk.CTk):
             results = convert_many_to_pdf(paths, output_dir=output_dir)
         except LibreOfficeNotAvailableError:
             messagebox.showerror(
-                "Anonimizator Pism",
+                "Anonimizator Dokumentów",
                 "Konwersja do PDF wymaga komponentu LibreOffice - użyj przycisku "
                 "'Zainstaluj obsługę .doc' najpierw.",
             )
@@ -366,11 +366,11 @@ class AnonymizerApp(ctk.CTk):
         try:
             download_libreoffice()
             messagebox.showinfo(
-                "Anonimizator Pism", "Komponent LibreOffice zainstalowany pomyślnie."
+                "Anonimizator Dokumentów", "Komponent LibreOffice zainstalowany pomyślnie."
             )
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror(
-                "Anonimizator Pism", f"Nie udało się zainstalować komponentu: {exc}"
+                "Anonimizator Dokumentów", f"Nie udało się zainstalować komponentu: {exc}"
             )
 
     # -- pętla odpytywania kolejki (uruchamiana przez after() w wątku Tk) --
@@ -548,7 +548,7 @@ class ReviewWindow(ctk.CTkToplevel):
             return
         self.item.staged = None
         self.item.status = FileStatus.ZAPISANY
-        messagebox.showinfo("Anonimizator Pism", f"Zapisano: {output_path}")
+        messagebox.showinfo("Anonimizator Dokumentów", f"Zapisano: {output_path}")
         self.destroy()
         self.on_finished()
 

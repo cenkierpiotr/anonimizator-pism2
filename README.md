@@ -1,10 +1,10 @@
-# Anonimizator Pism
+# Anonimizator Dokumentów
 
-Lokalna, w pełni offline aplikacja Windows do anonimizacji dokumentów prawniczych.
-Przyjmuje dowolny format wejściowy (PDF z tekstem, PDF skan, DOCX, DOC, ODT, TXT,
-obraz skanu) i zwraca `.docx` z zanonimizowanymi danymi wrażliwymi (osoby, adresy,
-telefony, PESEL/NIP/REGON/KRS, numery ksiąg wieczystych, IBAN, sygnatury akt i wiele
-innych kategorii — pełny opis w [docs/PLAN.md](docs/PLAN.md)).
+Lokalna, w pełni offline aplikacja Windows do anonimizacji dokumentów (ze
+szczególnym uwzględnieniem pism prawniczych — pozwów, umów, aktów notarialnych,
+wyroków — ale nie tylko). Przyjmuje dowolny format wejściowy (PDF z tekstem,
+PDF skan, DOCX, DOC, ODT, TXT, obraz skanu) i zwraca `.docx` z zanonimizowanymi
+danymi wrażliwymi, zachowując czytelność i kontekst dokumentu.
 
 Anonimizacja jest **nieodwracalna**: numeracja etykiet (`[Osoba 1]`, `[numer telefonu 2]`)
 żyje wyłącznie w pamięci procesu na czas przetwarzania jednego pliku i nigdy nie jest
@@ -16,18 +16,20 @@ Pełny opis architektury, decyzji projektowych i uzasadnień: [docs/PLAN.md](doc
 
 ## Dla kogo jest ta aplikacja
 
-Dla prawników, kancelarii i każdego, kto musi udostępnić treść pisma sądowego,
-umowy, aktu notarialnego czy wezwania do zapłaty (np. do publikacji, szkolenia,
-konsultacji, wzoru) bez ujawniania danych osobowych stron. Wszystko dzieje się
-lokalnie na komputerze użytkownika — dokument **nigdy nie jest wysyłany donikąd**
-(z jednym wyjątkiem opisanym w sekcji "Uwaga o trybie offline" niżej).
+Dla prawników, kancelarii i każdego, kto musi udostępnić treść dokumentu —
+pisma sądowego, umowy, aktu notarialnego, wezwania do zapłaty, ale też innej
+korespondencji czy dokumentacji zawierającej dane osobowe (np. do publikacji,
+szkolenia, konsultacji, wzoru) — bez ujawniania danych osobowych stron.
+Wszystko dzieje się lokalnie na komputerze użytkownika — dokument **nigdy nie
+jest wysyłany donikąd** (z jednym wyjątkiem opisanym w sekcji "Uwaga o trybie
+offline" niżej).
 
 ## Instalacja (dla użytkowników nietechnicznych — jeden plik, jeden klik)
 
 1. Przejdź do zakładki **[Releases](../../releases)** tego repozytorium (link
    widoczny też po prawej stronie strony głównej repo na GitHubie, sekcja
    "Releases").
-2. Pobierz najnowszy plik z rozszerzeniem `.exe` (np. `AnonimizatorPism-Setup-0.1.0.exe`)
+2. Pobierz najnowszy plik z rozszerzeniem `.exe` (np. `AnonimizatorDokumentow-Setup-0.1.0.exe`)
    — to jest jedyny plik potrzebny do instalacji.
 3. Uruchom pobrany plik podwójnym kliknięciem.
 4. **Windows prawie na pewno pokaże niebieski ekran "Windows chronił Twój
@@ -39,7 +41,7 @@ lokalnie na komputerze użytkownika — dokument **nigdy nie jest wysyłany doni
      notorycznie częsty — to fałszywy alarm, nie prawdziwe zagrożenie).
 5. Instalator nie wymaga uprawnień administratora — instaluje się tylko dla
    Twojego konta użytkownika. Kliknij **Dalej → Dalej → Zainstaluj**.
-6. Po instalacji na pulpicie pojawi się skrót **"Anonimizator Pism"** — gotowe,
+6. Po instalacji na pulpicie pojawi się skrót **"Anonimizator Dokumentów"** — gotowe,
    aplikacja jest zainstalowana i gotowa do użycia.
 7. Przy pierwszym wrzuceniu pliku `.doc` (stary format Worda) aplikacja
    zapyta o pobranie dodatkowego komponentu (~300 MB, LibreOffice, potrzebny
@@ -74,25 +76,103 @@ albo zainstalować komponent z pliku pobranego wcześniej na innym komputerze.
 
 ## Funkcje
 
-- Obsługa formatów: PDF (tekst i skan), DOCX, DOC (przez opcjonalny, pobierany na
-  żądanie LibreOffice), ODT, TXT, obrazy (JPG/PNG/TIFF).
-- OCR (Tesseract, `pol+eng`) z ostrzeżeniem przy niskiej pewności rozpoznania.
-- Detekcja wielowarstwowa: regexy z checksumami, gazetteery (imiona/nazwiska/miejscowości,
-  zbudowane z pełnych oficjalnych rejestrów publicznych — patrz
-  [resources/gazetteers/SOURCES.md](resources/gazetteers/SOURCES.md)), wzorce ról
-  prawnych, spaCy NER (`pl_core_news_md`), drugi przebieg literalny (formy
-  fleksyjne znalezionych nazwisk), heurystyka "potencjalnie pominięte" (tokeny z wielkiej
-  litery nie złapane przez żadną warstwę — sygnał do ręcznego sprawdzenia, nie automatyczna
-  anonimizacja).
-- Kolejka wielu plików jednocześnie w GUI, każdy plik z własną, niezależną numeracją.
-- Osobna funkcja "Konwertuj do PDF" (DOC/DOCX → PDF), niezależna od anonimizacji.
-- Opcjonalny tryb date-shifting (przesunięcie wszystkich dat w dokumencie o ten sam
-  losowy offset — zachowuje odstępy między zdarzeniami, ukrywa rzeczywiste daty).
-- Wykrywanie i usuwanie ochrony edycji dokumentu (`w:documentProtection`) w wyniku.
-- Ostrzeżenie przy dokumencie obcojęzycznym (NER trenowany na polskim korpusie).
-- Czyszczenie metadanych (`docProps`, nazwa pliku) i obowiązkowy re-skan "leak" przed
-  każdym zapisem — blokada zapisu, jeśli jakikolwiek zwalidowany identyfikator przetrwał.
-- Higiena plików tymczasowych: katalogi stagingu starsze niż 24h sprzątane przy starcie.
+- Obsługa formatów wejściowych: PDF z warstwą tekstową, PDF-skan (bez tekstu), DOCX, DOC (przez opcjonalny, pobierany na żądanie LibreOffice), ODT, TXT, obrazy (JPG/PNG/TIFF)
+- OCR (Tesseract, `pol+eng`) z ostrzeżeniem przy niskiej pewności rozpoznania i tolerancją typowych pomyłek OCR w danych ze checksumem (O/0, l/1/I, S/5, B/8, Z/2)
+- Automatyczne rozpoznanie obcojęzycznego dokumentu i ostrzeżenie, że detekcja osób może być ograniczona (modele trenowane na polskim korpusie)
+- Wielowarstwowa detekcja danych łącząca regexy z checksumami, gazetteery zbudowane z pełnych oficjalnych rejestrów publicznych, wzorce ról prawnych, model NER oraz drugi przebieg literalny na formach fleksyjnych znalezionych nazwisk — patrz sekcja "Zastosowane modele i mechanizmy detekcji" niżej
+- Numerowanie etykiet per kategoria i per dokument (`[Osoba 1]`, `[Osoba 2]`, `[numer telefonu 1]`...) — ta sama wartość w różnych miejscach dokumentu dostaje ten sam numer, różne wartości różne numery, więc kontekst "kto jest kim" zostaje zachowany mimo anonimizacji
+- Obsługa zagnieżdżeń i kolizji (np. nazwisko wewnątrz nazwy jednoosobowej działalności gospodarczej) — oba fragmenty anonimizowane osobno, żadna dana nie wycieka przez nadrzędną encję
+- Zachowanie formatowania i układu oryginału w wyjściowym `.docx`, łącznie z nagłówkami, stopkami, przypisami, komentarzami, polami tekstowymi i hiperłączami
+- Obowiązkowy ekran weryfikacji przed zapisem: lista wszystkich wykrytych i podmienionych fragmentów pogrupowana wg kategorii, podgląd dokumentu z podświetleniami, możliwość odznaczenia błędnego trafienia lub ręcznego dopisania pominiętego fragmentu
+- Heurystyka "potencjalnie pominięte": każdy token pisany wielką literą (nie na początku zdania), nieznany jako rzeczownik pospolity i niezłapany przez żadną warstwę detekcji, trafia na osobną listę do ręcznego sprawdzenia — zamiast być cicho pomijany
+- Kolejka wielu plików jednocześnie w GUI, każdy plik z własną, niezależną numeracją etykiet
+- Osobna funkcja "Konwertuj do PDF" (DOC/DOCX → PDF), niezależna od anonimizacji
+- Opcjonalny tryb date-shifting: przesunięcie wszystkich dat w dokumencie o ten sam losowy offset — zachowuje odstępy między zdarzeniami (czytelne terminy/przedawnienia), a jednocześnie ukrywa rzeczywiste daty
+- Wykrywanie i usuwanie ochrony edycji dokumentu (`w:documentProtection`) w pliku wynikowym
+- Obowiązkowy re-skan "leak" całego wygenerowanego pliku przed zapisem — blokada zapisu, jeśli jakikolwiek zwalidowany identyfikator (PESEL, NIP, IBAN, itd.) przetrwał w dowolnej części pakietu `.docx`
+- Czyszczenie metadanych dokumentu (`docProps`, autor, nazwa pliku wyjściowa) tak, by sam plik wynikowy też nie ujawniał danych osobowych
+- Obsługa PDF zabezpieczonych hasłem — czytelny monit o hasło zamiast surowego błędu
+- Higiena plików tymczasowych: dedykowany katalog roboczy per uruchomienie, czyszczony automatycznie, katalogi stagingu starsze niż 24h sprzątane przy starcie aplikacji
+- Pipeline przetwarzania w osobnym wątku z paskiem postępu i przyciskiem anulowania — GUI nie zamraża się przy długim OCR
+
+## Wykrywane i anonimizowane kategorie danych
+
+Etykiety numerowane (ta sama wartość = ten sam numer w obrębie jednego dokumentu):
+
+- imiona i nazwiska osób (klastrowane per dokument: `[Osoba 1]`, `[Osoba 2]`...)
+- numery telefonów, w tym formaty zagraniczne i różne zapisy separatorów
+- adresy zamieszkania/siedziby (ulica, numer, kod pocztowy, miejscowość), także zapisy skrócone bez prefiksu ulicy
+- adresy e-mail
+- nazwy i adresy sądów oraz innych instytucji/organów (prokuratura, urzędy, KRS)
+- PESEL
+- NIP
+- REGON
+- numer KRS
+- numer księgi wieczystej (z walidacją sumy kontrolnej)
+- numer działki ewidencyjnej i obręb, identyfikator TERYT działki
+- IBAN / numer rachunku bankowego (z walidacją sumy kontrolnej)
+- numery faktur i umów, w tym kredytowych
+- numery polis ubezpieczeniowych i numery szkód
+- numer dowodu osobistego (z walidacją sumy kontrolnej), paszportu, karty pobytu, prawa jazdy
+- numer VIN pojazdu i numer rejestracyjny
+- NPWZ (numer prawa wykonywania zawodu lekarza)
+- sygnatury akt sądowych, rozpoznawane osobno wg podtypu: cywilne/gospodarcze, karne, prokuratorskie, policyjne, administracyjne, Sądu Najwyższego/KIO, komornicze
+- numer aktu notarialnego
+- numer aktu stanu cywilnego (USC), numer aktu poświadczenia dziedziczenia, wpis w Rejestrze Spadkowym
+- adres IP (v4/v6), IMEI, adresy URL, nazwy użytkownika/profile w mediach społecznościowych
+- dane notariusza (imię, nazwisko, nazwa i adres kancelarii)
+- dane pełnomocników/adwokatów/radców prawnych, w tym numer wpisu na listę zawodową
+
+Kategorie z osobną polityką (nienumerowane domyślnie, bo identyczna wartość nie oznacza tu tego samego obiektu):
+
+- daty — domyślnie pozostawione (terminy są sednem dokumentu), poza datami urodzenia/zgonu wykrywanymi kontekstowo; opcjonalny tryb date-shifting
+- kwoty pieniężne — domyślnie zamieniane na `[kwota]` bez numeru (numerowanie sugerowałoby nieistniejący związek między różnymi kwotami)
+
+## Zastosowane modele i mechanizmy detekcji
+
+Żaden pojedynczy model nie wykrywa 100% danych wrażliwych w dowolnym tekście —
+dlatego aplikacja łączy kilka niezależnych warstw zamiast polegać na jednym
+"AI", a wynik zawsze przechodzi przez obowiązkową weryfikację użytkownika:
+
+- **Model NER (Named Entity Recognition) — spaCy `pl_core_news_md`.**
+  Statystyczny model rozpoznawania nazwanych encji wytrenowany na polskim
+  korpusie językowym (NKJP), rozpoznaje kandydatów na kategorie
+  PERSON (osoby), ORG (organizacje/instytucje) i LOC (miejsca). Działa w
+  pełni lokalnie na CPU, bez GPU, bez łączności z internetem — model jest
+  zapisany w instalatorze. Ograniczenie: jak każdy model NER, myli się na
+  rzadkich/nietypowo odmienionych nazwiskach i tekstach mocno odbiegających
+  stylistycznie od danych treningowych (stąd kolejne, uzupełniające warstwy
+  poniżej).
+- **OCR — Tesseract 5.x z modelami językowymi `pol` i `eng`.** Silnik
+  rozpoznawania tekstu z obrazu/skanu, z podstawowym preprocessingiem
+  (deskew, binaryzacja) i adaptacyjnym doborem parametrów. Podaje też pewność
+  rozpoznania per słowo — przy niskiej średniej aplikacja pokazuje ostrzeżenie,
+  a detektory ze sumą kontrolną przechodzą w tryb tolerancyjny na typowe
+  pomyłki znaków.
+- **Gazetteery (słowniki referencyjne) imion, nazwisk i miejscowości** —
+  zbudowane z pełnych, oficjalnych, otwartych rejestrów publicznych (rejestr
+  PESEL przez dane.gov.pl, TERYT/GUS — pełne pochodzenie i licencje w
+  [resources/gazetteers/SOURCES.md](resources/gazetteers/SOURCES.md)). To nie
+  model uczenia maszynowego, tylko duży, dokładny słownik — imiona są
+  samodzielnym sygnałem wysokiej precyzji, nazwiska (bo pokrywają się ze
+  zwykłymi rzeczownikami) wymagają dodatkowego sygnału kontekstowego.
+- **Wzorce kontekstowe ról prawnych** — reguły wykrywające sekwencję
+  tytuł/rola prawna (np. "Pan", "Mec.", "notariusz", "powód", "pozwany",
+  "świadek") + następujący ciąg wielkich liter, dopełniające model NER tam,
+  gdzie ten nie rozpoznaje nietypowego dla siebie kontekstu pism sądowych.
+- **Drugi przebieg literalny** — po znalezieniu konkretnego nazwiska przez
+  którąkolwiek z powyższych warstw, generowane są jego polskie formy
+  fleksyjne (odmiana przez przypadki) i cały dokument jest przeszukiwany
+  dosłownie — łapie wystąpienia pominięte w tabelach, nagłówkach czy
+  fragmentach pisanych wersalikami.
+- **Detektory regexowe z sumą kontrolną** dla danych o ścisłej strukturze
+  (PESEL, NIP, REGON, KRS, IBAN, numer księgi wieczystej, dowód osobisty
+  i inne) — to nie modele AI, tylko wysoko precyzyjne wzorce matematyczne,
+  ale kluczowe uzupełnienie modeli statystycznych.
+
+Wszystkie modele i dane działają **lokalnie, offline, bez GPU** — żaden
+fragment dokumentu nie jest nigdy wysyłany do zewnętrznego API czy usługi
+chmurowej AI.
 
 ## Ograniczenia i uczciwe zastrzeżenia
 
