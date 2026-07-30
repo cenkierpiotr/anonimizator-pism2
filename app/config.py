@@ -36,6 +36,8 @@ DEFAULT_CATEGORY_POLICIES: dict[str, CategoryPolicy] = {
     "case_number": CategoryPolicy.NUMBER,
     "notarial_act": CategoryPolicy.NUMBER,
     "usc_act": CategoryPolicy.NUMBER,
+    "poswiadczenie_dziedziczenia": CategoryPolicy.NUMBER,
+    "rejestr_spadkowy": CategoryPolicy.NUMBER,
     "legal_role_person": CategoryPolicy.NUMBER,
     "institution": CategoryPolicy.NUMBER,
     "ip_address": CategoryPolicy.NUMBER,

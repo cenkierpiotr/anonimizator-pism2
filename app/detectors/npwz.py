@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import re
 
+from app.detectors.base import Detector
+
 _PATTERN = re.compile(
     r"(?:NPWZ|prawo wykonywania zawodu)\W{0,20}?(?P<value>\d{7})\b",
     re.IGNORECASE,
 )
 
-
-def find_all(text: str) -> list[tuple[int, int]]:
-    return [(m.start("value"), m.end("value")) for m in _PATTERN.finditer(text)]
+detector = Detector(name="npwz", pattern=_PATTERN)

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from app.detectors.base import Detector
 
-_MOBILE = r"(?:\+48|0048)?[\s-]?\d{3}[\s-]\d{3}[\s-]\d{3}|(?:\+48|0048)\d{9}|\d{9}"
+_MOBILE = r"(?:(?:\+48|0048)[\s-]?)?\d{3}[\s-]\d{3}[\s-]\d{3}|(?:\+48|0048)\d{9}|\d{9}"
 _LANDLINE = r"\(?\d{2}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}"
 
 _PATTERN = rf"(?<!\d)(?:{_MOBILE}|{_LANDLINE})(?!\d)"

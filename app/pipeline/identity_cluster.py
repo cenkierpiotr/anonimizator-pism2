@@ -30,6 +30,8 @@ CATEGORY_LABELS: dict[str, str] = {
     "case_number": "sygnatura akt",
     "notarial_act": "akt notarialny",
     "usc_act": "akt stanu cywilnego",
+    "poswiadczenie_dziedziczenia": "poświadczenie dziedziczenia",
+    "rejestr_spadkowy": "wpis w Rejestrze Spadkowym",
     "legal_role_person": "Osoba",
     "institution": "instytucja",
     "ip_address": "adres IP",
