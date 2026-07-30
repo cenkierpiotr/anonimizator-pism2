@@ -19,6 +19,6 @@ Wygenerowano 30 syntetycznych dokumentów (seed=42), typy: akt_notarialny, pozew
 
 ## Precyzja (zbiorcza, nie per kategoria)
 
-Wszystkich detekcji w całym zbiorze: 398. Z tego pokrywających się z jakąś zaplanowaną encją: 269 -> **precyzja zbiorcza: 67.6%**.
+Wszystkich detekcji w całym zbiorze: 403. Z tego pokrywających się z jakąś zaplanowaną encją: 274 -> **precyzja zbiorcza: 68.0%**.
 
 Uwaga: część detekcji spoza ground truth to NIE fałszywe alarmy w sensie użytkowym, tylko poprawne działanie warstw, których nie modelujemy w tym generatorze (np. `institution` na nazwie sądu/spółki w nagłówku, `date`/`amount` we frazach szablonu, dodatkowe wystąpienia nazwiska w drugim przebiegu literalnym). Realna precyzja "czy to naprawdę PII" jest więc prawdopodobnie WYŻSZA niż liczba powyżej sugeruje - to ograniczenie metodologii, nie pipeline'u.

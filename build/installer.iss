@@ -22,7 +22,7 @@
 #define MyAppName "Anonimizator Pism"
 #define MyAppVersion "0.1.0"
 ; TODO: podmienic na docelowego wydawce/firme przed pierwszym wydaniem.
-#define MyAppPublisher "Piotr Cenkier (do podmiany)"
+#define MyAppPublisher "Wydawca aplikacji (uzupelnij)"
 #define MyAppURL "https://github.com/cenkierpiotr/anonimizator-pism"
 #define MyAppExeName "AnonimizatorPism.exe"
 ; Katalog wyjsciowy PyInstaller (one-dir) wzgledem tego pliku .iss.
