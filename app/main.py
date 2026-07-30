@@ -48,6 +48,61 @@ class AnonymizeResult:
     entity_count: int = 0
 
 
+@dataclass
+class StagedAnonymization:
+    """Wynik przetworzenia pliku, jeszcze NIE dostarczony użytkownikowi -
+    czeka w katalogu tymczasowym na obowiązkowy ekran weryfikacji w GUI
+    (patrz plan, punkt 7 sekcji "Jakość detekcji i warstwa bezpieczeństwa").
+
+    `staging_docx_path` już przeszedł metadata_scrub + leak_check (blokada
+    zapisu działa na tym etapie, nie dopiero przy finalizacji) - GUI może
+    bezpiecznie otworzyć go i pokazać podgląd tekstu/liczników per kategoria
+    przed przeniesieniem na docelową ścieżkę.
+
+    Wywołujący MUSI zakończyć każdy staging przez `finalize_staged()` (użytkownik
+    zatwierdził) albo `discard_staged()` (użytkownik odrzucił/anulował) -
+    inaczej katalog tymczasowy nie zostanie posprzątany.
+    """
+
+    input_path: Path
+    format: DocumentFormat
+    staging_dir: Path
+    staging_docx_path: Path
+    warnings: list[str]
+    registry: IdentityRegistry
+
+    @property
+    def entity_count(self) -> int:
+        return sum(self.registry._counters.values())
+
+    def preview_text(self) -> str:
+        """Zwraca cały zanonimizowany tekst do podglądu w ekranie weryfikacji."""
+        document = docx.Document(self.staging_docx_path)
+        return "\n".join(p.text for p in document.paragraphs)
+
+
+def finalize_staged(staged: StagedAnonymization, output_path: str | Path) -> AnonymizeResult:
+    """Użytkownik zatwierdził podgląd - przenosi plik ze stagingu na docelową
+    ścieżkę i sprząta katalog tymczasowy."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(staged.staging_docx_path), str(output_path))
+    shutil.rmtree(staged.staging_dir, ignore_errors=True)
+    return AnonymizeResult(
+        input_path=staged.input_path,
+        output_path=output_path,
+        format=staged.format,
+        warnings=staged.warnings,
+        entity_count=staged.entity_count,
+    )
+
+
+def discard_staged(staged: StagedAnonymization) -> None:
+    """Użytkownik anulował/odrzucił wynik w ekranie weryfikacji - sprząta
+    katalog tymczasowy bez dostarczania żadnego pliku."""
+    shutil.rmtree(staged.staging_dir, ignore_errors=True)
+
+
 def _detect_fn_for(registry: IdentityRegistry, nlp) -> Callable[[str], list[tuple[int, int, str]]]:
     def _detect_fn(text: str) -> list[tuple[int, int, str]]:
         replacements: list[Replacement] = detect_in_text(text, registry, nlp=nlp)
@@ -63,52 +118,46 @@ def _build_docx_from_paragraphs(paragraphs: list[str], output_path: Path) -> Non
     document.save(output_path)
 
 
-def _finalize_output(tmp_docx: Path, final_output_path: Path) -> None:
-    """Czyści metadane, uruchamia re-skan "leak" jako ostatnią linię obrony,
-    i dopiero po pozytywnym wyniku przenosi plik na docelową ścieżkę. Blokuje
-    dostarczenie pliku użytkownikowi, jeśli cokolwiek zwalidowanego przetrwało."""
-    metadata_scrub.scrub_docx_metadata(tmp_docx)
-    assert_clean(tmp_docx)  # rzuca LeakDetectedError, jeśli coś przetrwało
-    final_output_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(tmp_docx), str(final_output_path))
-
-
-def anonymize_file(
+def process_to_staging(
     input_path: str | Path,
-    output_path: str | Path,
     options: AnonymizeOptions | None = None,
-) -> AnonymizeResult:
-    """Przetwarza JEDEN plik od formatu wejściowego do zanonimizowanego .docx.
+) -> StagedAnonymization:
+    """Przetwarza JEDEN plik od formatu wejściowego do zanonimizowanego .docx,
+    zatrzymując wynik w katalogu tymczasowym do obowiązkowego przeglądu w GUI
+    (patrz `StagedAnonymization`) zamiast dostarczać go od razu.
+
+    Metadane są już wyczyszczone, a re-skan "leak" już przeszedł pozytywnie w
+    momencie zwrócenia wyniku - blokada zapisu (patrz plan, krok [5]) działa
+    na tym etapie, nie dopiero przy finalizacji.
 
     Rzuca `UnsupportedDocumentError` (nierozpoznany/uszkodzony format),
     `PasswordRequiredError` (PDF wymaga hasła), `LibreOfficeNotAvailableError`
-    (.doc bez pobranego komponentu) albo `LeakDetectedError` (blokada zapisu
-    po wykryciu niezanonimizowanych danych w wyniku - błąd wewnętrzny
-    detektorów, nie powinien normalnie wystąpić).
+    (.doc bez pobranego komponentu) albo `LeakDetectedError` (blokada, jeśli
+    cokolwiek zwalidowanego przetrwało - błąd wewnętrzny detektorów, nie
+    powinien normalnie wystąpić).
     """
     options = options or AnonymizeOptions()
     input_path = Path(input_path)
-    output_path = Path(output_path)
     warnings: list[str] = []
 
     detection = detect_format(input_path)
     registry = IdentityRegistry(options.config)
     detect_fn = _detect_fn_for(registry, options.nlp)
 
-    with tempfile.TemporaryDirectory(prefix="anonimizator_run_") as tmp_dir:
-        tmp_path = Path(tmp_dir)
-        tmp_output = tmp_path / "wynik.docx"
+    staging_dir = Path(tempfile.mkdtemp(prefix="anonimizator_staging_"))
+    try:
+        tmp_output = staging_dir / "wynik.docx"
 
         if detection.format == DocumentFormat.DOCX:
             docx_writer.process_docx(input_path, tmp_output, detect_fn)
 
         elif detection.format == DocumentFormat.DOC:
-            converted = tmp_path / "przekonwertowany.docx"
+            converted = staging_dir / "przekonwertowany.docx"
             legacy_convert.convert_doc_to_docx(input_path, converted)
             docx_writer.process_docx(converted, tmp_output, detect_fn)
 
         elif detection.format == DocumentFormat.ODT:
-            odt_output = tmp_path / "wynik.odt"
+            odt_output = staging_dir / "wynik.odt"
             odt_reader.process_odt(input_path, odt_output, detect_fn)
             legacy_convert.convert_document(odt_output, tmp_output, target_format="docx")
 
@@ -174,15 +223,32 @@ def anonymize_file(
                 "zmian przed dalszym udostępnieniem pliku."
             )
 
-        _finalize_output(tmp_output, output_path)
+        metadata_scrub.scrub_docx_metadata(tmp_output)
+        assert_clean(tmp_output)
 
-    return AnonymizeResult(
-        input_path=input_path,
-        output_path=output_path,
-        format=detection.format,
-        warnings=warnings,
-        entity_count=sum(registry._counters.values()),
-    )
+        return StagedAnonymization(
+            input_path=input_path,
+            format=detection.format,
+            staging_dir=staging_dir,
+            staging_docx_path=tmp_output,
+            warnings=warnings,
+            registry=registry,
+        )
+    except Exception:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise
+
+
+def anonymize_file(
+    input_path: str | Path,
+    output_path: str | Path,
+    options: AnonymizeOptions | None = None,
+) -> AnonymizeResult:
+    """Wygodny skrót jednokrokowy (bez ekranu weryfikacji) - przetwarza i od razu
+    zatwierdza wynik pod `output_path`. Używany przez wsadową `anonymize_files`
+    i tam, gdzie mandatowy podgląd nie jest wymagany (np. testy end-to-end)."""
+    staged = process_to_staging(input_path, options)
+    return finalize_staged(staged, output_path)
 
 
 def _apply_text(detect_fn, text: str) -> str:
