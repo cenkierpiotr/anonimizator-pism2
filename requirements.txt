@@ -8,7 +8,6 @@ spacy>=3.7
 pl_core_news_md @ https://github.com/explosion/spacy-models/releases/download/pl_core_news_md-3.8.0/pl_core_news_md-3.8.0-py3-none-any.whl
 odfpy>=1.4
 customtkinter>=5.2
-requests>=2.31
 
 # dev/test only
 pytest>=8.0
