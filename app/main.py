@@ -309,33 +309,14 @@ def anonymize_file(
     return finalize_staged(staged, output_path)
 
 
-def _select_outermost_spans(
-    spans: list[tuple[int, int, str]]
-) -> list[tuple[int, int, str]]:
-    """`detect_fn` (przez `merge.resolve`) może celowo zwrócić zagnieżdżone
-    span-y (np. nazwisko wewnątrz nazwy firmy, miejscowość wewnątrz adresu -
-    oznaczone `nestable=True`, patrz `merge.py`) - to ma sens na poziomie
-    detekcji (obie informacje są prawdziwe), ale podmiana tekstu na płaskim
-    stringu nie potrafi nałożyć dwóch NAKŁADAJĄCYCH się zamian: podmiana
-    spanu wewnętrznego przesuwa/zamyka indeksy spanu zewnętrznego, co przy
-    naiwnym sklejaniu psuje wynik (np. urwany fragment liczby + osierocony
-    nawias z etykiety). Zewnętrzny span już obejmuje/ukrywa treść
-    wewnętrznego, więc przy samej podmianie tekstu zostaje tylko najszerszy
-    (najbardziej zewnętrzny) span z każdego zagnieżdżonego klastra."""
-    ordered = sorted(spans, key=lambda s: (s[0], -(s[1] - s[0])))
-    top: list[tuple[int, int, str]] = []
-    for start, end, label in ordered:
-        if any(o_start <= start and end <= o_end for o_start, o_end, _ in top):
-            continue
-        top.append((start, end, label))
-    return top
-
-
 def _apply_text(detect_fn, text: str) -> str:
     """Uruchamia `detect_fn` na płaskim tekście (TXT/PDF/OCR) i nakłada
     podmiany - te ścieżki nie mają struktury węzłów XML/ODF do rozbicia,
-    więc operujemy na całym stringu naraz."""
-    spans = _select_outermost_spans(detect_fn(text))
+    więc operujemy na całym stringu naraz. `detect_fn` (przez
+    `detect_all.collapse_for_replacement`) już gwarantuje span-y
+    nienakładające się, więc prosta podmiana od końca do początku jest
+    bezpieczna."""
+    spans = detect_fn(text)
     result = text
     for start, end, label in sorted(spans, key=lambda s: s[0], reverse=True):
         result = result[:start] + label + result[end:]
