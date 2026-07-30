@@ -1,10 +1,15 @@
 """Przydzielanie etykiet ([Osoba 1], [numer telefonu 2], ...) w ramach pojedynczego
 dokumentu. Liczniki i mapowania żyją WYŁĄCZNIE w pamięci procesu na czas
 przetwarzania jednego pliku - nigdy nie są zapisywane na dysk (nieodwracalność).
+
+Polityka per kategoria (numerować / usuwać bez numeru / zostawić) pochodzi
+z `app.config` - nie jest duplikowana tutaj, żeby `config.py` był jedynym
+źródłem prawdy o tym, jak traktowana jest dana kategoria.
 """
 
 from __future__ import annotations
 
+from app.config import AppConfig, CategoryPolicy
 from app.pipeline.canonicalize import canonicalize
 
 CATEGORY_LABELS: dict[str, str] = {
@@ -31,29 +36,26 @@ CATEGORY_LABELS: dict[str, str] = {
     "imei": "IMEI",
     "url": "adres URL",
     "birth_date": "data urodzenia",
+    "amount": "kwota",
 }
-
-# Kategorie usuwane bez numeru (ta sama etykieta dla wszystkich wystąpień).
-NO_NUMBER_LABELS: dict[str, str] = {
-    "amount": "[kwota]",
-}
-
-# Kategorie domyślnie pozostawiane w tekście bez żadnej zmiany.
-LEAVE_CATEGORIES: frozenset[str] = frozenset({"date"})
 
 
 class IdentityRegistry:
     """Rejestr numeracji dla jednego dokumentu. Tworzyć nową instancję per plik."""
 
-    def __init__(self) -> None:
+    def __init__(self, config: AppConfig | None = None) -> None:
+        self._config = config or AppConfig()
         self._counters: dict[str, int] = {}
         self._assigned: dict[tuple[str, str], int] = {}
 
     def label_for(self, category: str, value: str) -> str | None:
-        if category in LEAVE_CATEGORIES:
+        policy = self._config.policy_for(category)
+        display_name = CATEGORY_LABELS.get(category, category)
+
+        if policy is CategoryPolicy.LEAVE:
             return None
-        if category in NO_NUMBER_LABELS:
-            return NO_NUMBER_LABELS[category]
+        if policy is CategoryPolicy.NO_NUMBER:
+            return f"[{display_name}]"
 
         canonical_value = canonicalize(category, value)
         key = (category, canonical_value)
@@ -63,5 +65,4 @@ class IdentityRegistry:
             self._counters[category] = number
             self._assigned[key] = number
 
-        display_name = CATEGORY_LABELS.get(category, category)
         return f"[{display_name} {number}]"
