@@ -15,7 +15,7 @@ def test_detect_docx(tmp_path):
 
 def test_detect_txt(tmp_path):
     path = tmp_path / "note.txt"
-    path.write_text("zwykły tekst")
+    path.write_text("zwykły tekst", encoding="utf-8")
     result = detect_format(path)
     assert result.format == DocumentFormat.TXT
 

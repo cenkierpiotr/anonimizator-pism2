@@ -1,4 +1,5 @@
 import hashlib
+from pathlib import Path
 
 import pytest
 
@@ -22,7 +23,7 @@ def test_find_soffice_falls_back_to_system_installation(tmp_path, monkeypatch):
 
     result = legacy_convert.find_soffice()
     assert result is not None
-    assert str(result) == "/usr/bin/soffice"
+    assert result == Path("/usr/bin/soffice")
 
 
 def test_find_soffice_returns_none_when_unavailable(tmp_path, monkeypatch):
