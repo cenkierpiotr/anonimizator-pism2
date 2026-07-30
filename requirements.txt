@@ -4,6 +4,8 @@ pypdfium2>=4.30
 pytesseract>=0.3.10
 Pillow>=10.0
 spacy>=3.7
+# Model NER (nie jest na PyPI pod prostą nazwą, pobierany bezpośrednio z GitHub Releases)
+pl_core_news_md @ https://github.com/explosion/spacy-models/releases/download/pl_core_news_md-3.8.0/pl_core_news_md-3.8.0-py3-none-any.whl
 odfpy>=1.4
 customtkinter>=5.2
 requests>=2.31
