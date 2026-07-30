@@ -271,6 +271,5 @@ Wynik trafia na stdout i do `scripts/golden_report.md`.
 
 ## Zgłaszanie problemów
 
-To repozytorium jest obecnie prywatne / w przygotowaniu do publikacji. Po
-udostępnieniu — zgłoszenia błędów i propozycje przez zakładkę Issues tego
-repozytorium.
+To repozytorium jest obecnie prywatne. Zgłoszenia błędów i propozycje —
+przez zakładkę Issues tego repozytorium (dla osób z dostępem).
