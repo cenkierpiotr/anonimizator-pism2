@@ -66,3 +66,57 @@ def test_split_run_replacement(tmp_path):
 
 def test_has_tracked_changes_false_for_clean_doc(sample_docx):
     assert docx_writer.has_tracked_changes(sample_docx) is False
+
+
+def _add_document_protection(docx_path):
+    """Wstrzykuje `w:documentProtection` do word/settings.xml istniejącego
+    .docx - python-docx nie ma dla tego API, więc manipulujemy XML wprost,
+    tak jak zrobiłby to Word przy włączonej ochronie edycji."""
+    from lxml import etree
+
+    from app.pipeline.docx_writer import W_NS
+
+    settings_xml = (
+        f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<w:settings xmlns:w="{W_NS}">'
+        f'<w:documentProtection w:edit="readOnly" w:enforcement="1"/>'
+        f"</w:settings>"
+    ).encode("utf-8")
+
+    tmp_path = docx_path.with_suffix(".tmp.docx")
+    with zipfile.ZipFile(docx_path, "r") as zin, zipfile.ZipFile(
+        tmp_path, "w", zipfile.ZIP_DEFLATED
+    ) as zout:
+        written_settings = False
+        for item in zin.infolist():
+            if item.filename == "word/settings.xml":
+                zout.writestr(item, settings_xml)
+                written_settings = True
+            else:
+                zout.writestr(item, zin.read(item.filename))
+        if not written_settings:
+            zout.writestr("word/settings.xml", settings_xml)
+    tmp_path.replace(docx_path)
+    # potwierdź że XML jest poprawny
+    etree.fromstring(settings_xml)
+
+
+def test_has_document_protection_true_when_present(sample_docx):
+    _add_document_protection(sample_docx)
+    assert docx_writer.has_document_protection(sample_docx) is True
+
+
+def test_has_document_protection_false_for_clean_doc(sample_docx):
+    assert docx_writer.has_document_protection(sample_docx) is False
+
+
+def test_remove_document_protection_strips_node_and_reports_change(sample_docx):
+    _add_document_protection(sample_docx)
+    assert docx_writer.remove_document_protection(sample_docx) is True
+    assert docx_writer.has_document_protection(sample_docx) is False
+    # drugie wywołanie - nic już nie ma do usunięcia
+    assert docx_writer.remove_document_protection(sample_docx) is False
+
+
+def test_remove_document_protection_noop_when_no_settings_part(sample_docx):
+    assert docx_writer.remove_document_protection(sample_docx) is False

@@ -193,3 +193,47 @@ def has_tracked_changes(docx_path: str | Path) -> bool:
         xml_bytes = zf.read("word/document.xml")
     root = etree.fromstring(xml_bytes)
     return bool(root.find(f".//{{{W_NS}}}ins") is not None or root.find(f".//{{{W_NS}}}del") is not None)
+
+
+def has_document_protection(docx_path: str | Path) -> bool:
+    """Wykrywa `w:documentProtection` w `word/settings.xml` (ochrona edycji/
+    formularza/śledzenia zmian narzucona na dokument wejściowy — patrz plan,
+    sekcja "Obsługa przypadków brzegowych plików wejściowych")."""
+    with zipfile.ZipFile(docx_path, "r") as zf:
+        if "word/settings.xml" not in zf.namelist():
+            return False
+        xml_bytes = zf.read("word/settings.xml")
+    root = etree.fromstring(xml_bytes)
+    return root.find(f".//{{{W_NS}}}documentProtection") is not None
+
+
+def remove_document_protection(docx_path: str | Path) -> bool:
+    """Usuwa `w:documentProtection` z `word/settings.xml`, jeśli obecny.
+
+    Decyzja projektowa: wynikowy plik zanonimizowany ma być swobodnie
+    edytowalny przez prawnika (np. do dalszych poprawek pisma) - ochrona
+    edycji odziedziczona z oryginału nie ma tu żadnej wartości ochronnej
+    (dokument i tak trafia do rąk tej samej osoby), a jej zachowanie
+    utrudniałoby dalszą pracę z wynikiem bez wyraźnej korzyści.
+
+    Zwraca True jeśli coś faktycznie usunięto.
+    """
+    docx_path = Path(docx_path)
+    with zipfile.ZipFile(docx_path, "r") as zf:
+        if "word/settings.xml" not in zf.namelist():
+            return False
+        xml_bytes = zf.read("word/settings.xml")
+
+    root = etree.fromstring(xml_bytes)
+    protection_nodes = root.findall(f".//{{{W_NS}}}documentProtection")
+    if not protection_nodes:
+        return False
+
+    for node in protection_nodes:
+        node.getparent().remove(node)
+
+    new_bytes = etree.tostring(
+        root.getroottree(), xml_declaration=True, encoding="UTF-8", standalone=True
+    )
+    _rewrite_zip_parts(docx_path, {"word/settings.xml": new_bytes})
+    return True

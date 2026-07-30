@@ -9,8 +9,12 @@ z `app.config` - nie jest duplikowana tutaj, żeby `config.py` był jedynym
 
 from __future__ import annotations
 
+import random
+
 from app.config import AppConfig, CategoryPolicy
 from app.pipeline.canonicalize import canonicalize
+
+_DATE_SHIFT_RANGE_DAYS = 365
 
 CATEGORY_LABELS: dict[str, str] = {
     "phone": "numer telefonu",
@@ -49,6 +53,17 @@ class IdentityRegistry:
         self._config = config or AppConfig()
         self._counters: dict[str, int] = {}
         self._assigned: dict[tuple[str, str], int] = {}
+        # Jeden losowy offset per dokument (nie per data) - zachowuje odstępy
+        # między zdarzeniami w piśmie, patrz plan sekcja "Daty i kwoty".
+        self.date_shift_offset_days: int = (
+            random.randint(-_DATE_SHIFT_RANGE_DAYS, _DATE_SHIFT_RANGE_DAYS)
+            if self._config.date_shifting_enabled
+            else 0
+        )
+
+    @property
+    def date_shifting_enabled(self) -> bool:
+        return self._config.date_shifting_enabled
 
     def label_for(self, category: str, value: str) -> str | None:
         policy = self._config.policy_for(category)

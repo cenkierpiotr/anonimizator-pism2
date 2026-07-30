@@ -11,6 +11,7 @@ nazwisko wewnątrz nazwy firmy) są dozwolone przez `nestable=True`.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from app.config import AppConfig
@@ -35,7 +36,7 @@ from app.detectors import pesel
 from app.detectors import phone
 from app.detectors import regon
 from app.detectors import vehicle
-from app.pipeline import ner
+from app.pipeline import date_shift, ner
 from app.pipeline.identity_cluster import IdentityRegistry
 from app.pipeline.merge import Detection, resolve
 
@@ -60,6 +61,73 @@ _ADDRESS_PRIORITY_BY_CONFIDENCE = {
     "medium": _PRIORITY_ADDRESS_MEDIUM,
     "low": _PRIORITY_ADDRESS_LOW,
 }
+
+
+_CAPITALIZED_TOKEN_RE = re.compile(r"[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]{2,}")
+
+# Częste w pismach prawniczych słowa pospolite pisane wielką literą w środku
+# zdania (nazwy instytucji rodzajowe, tytuły grzecznościowe) - wykluczone,
+# żeby lista "potencjalnie pominięte" (patrz niżej) nie tonęła w szumie.
+_COMMON_CAPITALIZED_WORDS = frozenset(
+    {
+        "sąd", "sądu", "sądowi", "sądem", "sądzie",
+        "prokuratura", "prokuratury", "prokuraturze", "prokuraturą",
+        "urząd", "urzędu", "urzędem", "urzędzie",
+        "kodeks", "kodeksu", "kodeksem", "kodeksie",
+        "artykuł", "artykułu", "artykule", "artykułem",
+        "ustawa", "ustawy", "ustawie", "ustawą",
+        "rzeczpospolita", "rzeczypospolitej",
+        "polska", "polski", "polskiej", "polską",
+        "pan", "pani", "państwo", "państwa",
+        "rejonowy", "rejonowego", "rejonowym",
+        "okręgowy", "okręgowego", "okręgowym",
+        "apelacyjny", "apelacyjnego", "apelacyjnym",
+    }
+)
+
+
+def _is_sentence_start(text: str, pos: int) -> bool:
+    i = pos - 1
+    while i >= 0 and text[i] in " \t\n\r":
+        i -= 1
+    if i < 0:
+        return True
+    return text[i] in ".!?\n"
+
+
+def find_potentially_missed(text: str, resolved: list[Detection]) -> list[str]:
+    """Punkt 6 planu, sekcja "Jakość detekcji i warstwa bezpieczeństwa": tokeny
+    z wielkiej litery, nie na początku zdania, nieobjęte żadną warstwą
+    detekcji i nie będące znanym słowem pospolitym z krótkiej listy wyjątków
+    - zwracane jako fragmenty kontekstu (nie automatycznie anonimizowane, to
+    sygnał "sprawdź ręcznie w ekranie weryfikacji", nie decyzja). Zerowy koszt
+    modelowy, celowo z niską precyzją/wysokim recall - fałszywe alarmy są
+    tańsze niż ciche pominięcie prawdziwej danej."""
+    covered = [(d.start, d.end) for d in resolved]
+    missed: list[str] = []
+    seen_tokens: set[str] = set()
+
+    for match in _CAPITALIZED_TOKEN_RE.finditer(text):
+        start, end = match.start(), match.end()
+        token = match.group()
+
+        if token.casefold() in _COMMON_CAPITALIZED_WORDS:
+            continue
+        if any(c_start <= start < c_end for c_start, c_end in covered):
+            continue
+        if _is_sentence_start(text, start):
+            continue
+
+        key = token.casefold()
+        if key in seen_tokens:
+            continue
+        seen_tokens.add(key)
+
+        ctx_start = max(0, start - 25)
+        ctx_end = min(len(text), end + 25)
+        missed.append(text[ctx_start:ctx_end].strip())
+
+    return missed
 
 
 @dataclass(frozen=True)
@@ -103,7 +171,12 @@ def _literal_rescan(text: str, known_names: set[str], existing_spans: set[tuple[
     return detections
 
 
-def detect_in_text(text: str, registry: IdentityRegistry, nlp=None) -> list[Replacement]:
+def detect_in_text(
+    text: str,
+    registry: IdentityRegistry,
+    nlp=None,
+    potentially_missed_collector: list[str] | None = None,
+) -> list[Replacement]:
     """Uruchamia wszystkie warstwy detekcji na pojedynczym bloku tekstu i zwraca
     listę podmian po scaleniu nakładających się span-ów i przydzieleniu etykiet
     przez `registry` (per-dokumentowy `IdentityRegistry`)."""
@@ -170,8 +243,16 @@ def detect_in_text(text: str, registry: IdentityRegistry, nlp=None) -> list[Repl
 
     resolved = resolve(detections)
 
+    if potentially_missed_collector is not None:
+        potentially_missed_collector.extend(find_potentially_missed(text, resolved))
+
     replacements: list[Replacement] = []
     for d in resolved:
+        if d.category == "date" and registry.date_shifting_enabled:
+            shifted = date_shift.shift_date_string(d.value, registry.date_shift_offset_days)
+            if shifted != d.value:
+                replacements.append(Replacement(d.start, d.end, shifted))
+            continue
         label = registry.label_for(d.category, d.value)
         if label is None:
             continue

@@ -19,12 +19,15 @@ from typing import Callable
 import docx
 
 from app.config import AppConfig
-from app.pipeline import legacy_convert, metadata_scrub, ocr, odt_reader, pdf_reader
+from app.pipeline import language_detect, legacy_convert, metadata_scrub, ocr, odt_reader, pdf_reader
 from app.pipeline import docx_writer
 from app.pipeline.detect_all import Replacement, detect_in_text
 from app.pipeline.format_detect import DocumentFormat, UnsupportedDocumentError, detect_format
 from app.pipeline.identity_cluster import IdentityRegistry
 from app.pipeline.leak_check import assert_clean
+from app.pipeline.temp_hygiene import STAGING_DIR_PREFIX
+
+_LANGUAGE_SAMPLE_CHAR_LIMIT = 5000
 
 
 class PasswordRequiredError(RuntimeError):
@@ -70,6 +73,7 @@ class StagedAnonymization:
     staging_docx_path: Path
     warnings: list[str]
     registry: IdentityRegistry
+    potentially_missed: list[str] = field(default_factory=list)
 
     @property
     def entity_count(self) -> int:
@@ -103,9 +107,18 @@ def discard_staged(staged: StagedAnonymization) -> None:
     shutil.rmtree(staged.staging_dir, ignore_errors=True)
 
 
-def _detect_fn_for(registry: IdentityRegistry, nlp) -> Callable[[str], list[tuple[int, int, str]]]:
+def _detect_fn_for(
+    registry: IdentityRegistry,
+    nlp,
+    sample_texts: list[str] | None = None,
+    potentially_missed: list[str] | None = None,
+) -> Callable[[str], list[tuple[int, int, str]]]:
     def _detect_fn(text: str) -> list[tuple[int, int, str]]:
-        replacements: list[Replacement] = detect_in_text(text, registry, nlp=nlp)
+        if sample_texts is not None and text:
+            sample_texts.append(text)
+        replacements: list[Replacement] = detect_in_text(
+            text, registry, nlp=nlp, potentially_missed_collector=potentially_missed
+        )
         return [(r.start, r.end, r.label) for r in replacements]
 
     return _detect_fn
@@ -142,9 +155,11 @@ def process_to_staging(
 
     detection = detect_format(input_path)
     registry = IdentityRegistry(options.config)
-    detect_fn = _detect_fn_for(registry, options.nlp)
+    sample_texts: list[str] = []
+    potentially_missed: list[str] = []
+    detect_fn = _detect_fn_for(registry, options.nlp, sample_texts, potentially_missed)
 
-    staging_dir = Path(tempfile.mkdtemp(prefix="anonimizator_staging_"))
+    staging_dir = Path(tempfile.mkdtemp(prefix=STAGING_DIR_PREFIX))
     try:
         tmp_output = staging_dir / "wynik.docx"
 
@@ -223,8 +238,31 @@ def process_to_staging(
                 "zmian przed dalszym udostępnieniem pliku."
             )
 
+        if docx_writer.has_document_protection(tmp_output):
+            docx_writer.remove_document_protection(tmp_output)
+            warnings.append(
+                "Oryginalny dokument miał włączoną ochronę edycji - została usunięta "
+                "w wyniku, żeby plik zanonimizowany pozostał w pełni edytowalny."
+            )
+
+        sample_text = "".join(sample_texts)[:_LANGUAGE_SAMPLE_CHAR_LIMIT]
+        if sample_text and not language_detect.looks_polish(sample_text):
+            warnings.append(
+                "Dokument wygląda na obcojęzyczny - rozpoznawanie osób (NER) może być "
+                "mniej skuteczne niż na tekście polskim."
+            )
+
         metadata_scrub.scrub_docx_metadata(tmp_output)
         assert_clean(tmp_output)
+
+        seen_snippets: set[str] = set()
+        deduped_missed: list[str] = []
+        for snippet in potentially_missed:
+            key = snippet.casefold()
+            if key in seen_snippets:
+                continue
+            seen_snippets.add(key)
+            deduped_missed.append(snippet)
 
         return StagedAnonymization(
             input_path=input_path,
@@ -233,6 +271,7 @@ def process_to_staging(
             staging_docx_path=tmp_output,
             warnings=warnings,
             registry=registry,
+            potentially_missed=deduped_missed,
         )
     except Exception:
         shutil.rmtree(staging_dir, ignore_errors=True)

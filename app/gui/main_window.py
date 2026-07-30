@@ -17,10 +17,6 @@ responsywność GUI" oraz punkt 7 "Jakość detekcji i warstwa bezpieczeństwa")
   "Zatwierdź i zapisz" (-> `finalize_staged`) albo "Odrzuć"
   (-> `discard_staged`), żaden plik nie ląduje na dysku docelowym.
 
-TODO (świadomie odłożone, patrz zadanie): klasa "podejrzane, nieoznaczone"
-(punkt 6 sekcji jakości detekcji w planie) - podświetlanie tokenów z wielkiej
-litery nie złapanych przez żadną warstwę detekcji. Backend obecnie nie
-udostępnia takiej listy w `StagedAnonymization`, więc GUI też jej nie pokazuje.
 """
 
 from __future__ import annotations
@@ -48,6 +44,7 @@ from app.pipeline.format_detect import UnsupportedDocumentError
 from app.pipeline.legacy_convert import LibreOfficeNotAvailableError, download_libreoffice
 from app.pipeline.leak_check import LeakDetectedError
 from app.pipeline.metadata_scrub import neutral_output_filename
+from app.pipeline.temp_hygiene import cleanup_stale_staging_dirs
 
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("blue")
@@ -481,6 +478,25 @@ class ReviewWindow(ctk.CTkToplevel):
                     anchor="w", padx=16, pady=2
                 )
 
+        if staged.potentially_missed:
+            missed_frame = ctk.CTkFrame(self)
+            missed_frame.pack(side="top", fill="x", padx=14, pady=4)
+            ctk.CTkLabel(
+                missed_frame,
+                text=(
+                    "Potencjalnie pominięte (sprawdź ręcznie - nie zostały "
+                    "automatycznie zanonimizowane):"
+                ),
+                font=ctk.CTkFont(weight="bold"),
+                anchor="w",
+                wraplength=760,
+                justify="left",
+            ).pack(anchor="w", padx=8, pady=(6, 0))
+            for snippet in staged.potentially_missed[:20]:
+                ctk.CTkLabel(
+                    missed_frame, text=f"• ...{snippet}...", anchor="w", wraplength=760, justify="left"
+                ).pack(anchor="w", padx=16, pady=2)
+
         ctk.CTkLabel(self, text="Podgląd zanonimizowanego tekstu:", anchor="w").pack(
             side="top", fill="x", padx=14, pady=(8, 2)
         )
@@ -538,6 +554,7 @@ class ReviewWindow(ctk.CTkToplevel):
 
 
 def main() -> None:
+    cleanup_stale_staging_dirs()
     app = AnonymizerApp()
     app.mainloop()
 
