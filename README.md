@@ -83,3 +83,23 @@ Kluczowe wybory biblioteczne i uzasadnienia (pełne w planie projektu):
   dołączanym do instalatora przed pierwszym wydaniem).
 - LibreOffice (obsługa `.doc`) pobierany na żądanie z GitHub Releases projektu,
   nie wchodzi do bazowego instalatora — patrz `app/pipeline/legacy_convert.py`.
+
+## Golden dataset / jakość detekcji
+
+`scripts/golden_dataset.py` generuje syntetyczne pisma prawnicze (pozew, akt
+notarialny, wyrok, wezwanie do zapłaty) wypełnione losowymi, ale poprawnymi pod
+względem checksumy danymi (PESEL/NIP/IBAN) oraz imionami/nazwiskami/
+miejscowościami z tych samych gazetteerów co produkcyjny pipeline, ze znanym z
+góry rozmieszczeniem danych wrażliwych (ground truth). Uruchamia na nich
+prawdziwy pipeline detekcji (`detect_in_text`) i liczy recall/precision per
+kategoria — patrz plan projektu, sekcja "Weryfikacja". To narzędzie
+deweloperskie (nie jest częścią wysyłanej aplikacji, celowo nie jest wpięte w
+CI/pytest — regresja jakości detekcji ma być widoczna dla człowieka przy
+ręcznym uruchomieniu, nie automatycznie czerwienić builda).
+
+```
+source .venv/bin/activate
+python3 scripts/golden_dataset.py --n 30 --seed 42
+```
+
+Wynik trafia na stdout i do `scripts/golden_report.md`.

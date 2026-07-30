@@ -3,6 +3,11 @@ python-docx>=1.1
 pypdfium2>=4.30
 pytesseract>=0.3.10
 Pillow>=10.0
+# Używany bezpośrednio w app/pipeline/ocr.py (deskew metodą profilu projekcji,
+# próg Otsu przy binaryzacji) - dotąd był tylko tranzytywną zależnością spaCy,
+# deklarujemy jawnie bo teraz jest bezpośrednio importowany. Nie dodajemy
+# OpenCV: powyższe da się policzyć samym numpy, bez dużej zależności binarnej.
+numpy>=1.24
 spacy>=3.7
 # Model NER (nie jest na PyPI pod prostą nazwą, pobierany bezpośrednio z GitHub Releases)
 pl_core_news_md @ https://github.com/explosion/spacy-models/releases/download/pl_core_news_md-3.8.0/pl_core_news_md-3.8.0-py3-none-any.whl
