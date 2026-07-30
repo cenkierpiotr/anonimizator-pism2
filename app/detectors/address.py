@@ -21,13 +21,36 @@ from dataclasses import dataclass
 from app.pipeline import gazetteers
 from app.pipeline.ner import NerEntity
 
-_STREET_PREFIX = r"(?:ul(?:ica|icy)?|al(?:eja|ei)?|pl(?:ac|acu)?|os(?:iedle|iedlu)?)\.?"
+# Prefiks bywa zapisywany wielką literą na początku linii/nagłówka adresu
+# ("Ul. Przykładowa 12") - `(?i:...)` obejmuje tylko sam prefiks, nie resztę
+# wzorca, żeby nie rozluźnić rozpoznawania nazwy ulicy (wymaga wielkiej litery).
+_STREET_PREFIX = r"\b(?i:ul(?:ica|icy)?|al(?:eja|ei)?|pl(?:ac|acu)?|os(?:iedle|iedlu)?)\.?"
 _WORD = r"[A-ZĄĆĘŁŃÓŚŹŻ][\wąćęłńóśźżĄĆĘŁŃÓŚŹŻ.\-]*"
 _STREET_NAME = rf"{_WORD}(?:\s+{_WORD})*"
 _BUILDING_NO = r"\d+[A-Za-z]?(?:/\d+[A-Za-z]?)?"
 
 _STREET_PATTERN = re.compile(
     rf"(?P<value>{_STREET_PREFIX}\s+{_STREET_NAME}\s+{_BUILDING_NO})"
+)
+
+# Sama nazwa ulicy bez numeru budynku (np. "ul. Moniuszki" w zdaniu bez
+# konkretnego adresu pod tym numerem) - prefiks `ul./al./pl./os.` jest sam w
+# sobie wystarczająco silną kotwicą, więc numer budynku nie musi być
+# obowiązkowy. Osobny (niższy niż pełny adres, ale wciąż "high") wzorzec,
+# żeby nie rozluźniać `_STREET_PATTERN` używanego tam, gdzie numer realnie
+# występuje.
+_STREET_NO_NUMBER_PATTERN = re.compile(
+    rf"(?P<value>{_STREET_PREFIX}\s+{_STREET_NAME})(?!\s+{_BUILDING_NO})"
+)
+
+# Wyliczenie kilku ulic po słowie "ulic(ami/ą/y/a)" bez powtórzonego prefiksu
+# przy każdej z nich (np. "między ulicami: Moniuszki, Wojska Polskiego i
+# Łuczańską w Giżycku") - częste w opisach granic działek w wypisach z planu
+# zagospodarowania. Łapczywe do najbliższego "w <Miejscowość>" albo końca zdania.
+_STREET_LIST_ANCHOR = re.compile(
+    r"ulic(?:ami|ą|y|a)\s*:?\s+"
+    rf"(?P<value>{_WORD}(?:\s+{_WORD})*(?:\s*,\s*{_WORD}(?:\s+{_WORD})*|\s+i\s+{_WORD}(?:\s+{_WORD})*)*)"
+    r"(?=\s+w\s+[A-ZĄĆĘŁŃÓŚŹŻ]|[.;\n]|$)"
 )
 
 _POSTAL_CODE = r"\d{2}-\d{3}"
@@ -57,9 +80,23 @@ class AddressCandidate:
 
 
 def _street_candidates(text: str) -> list[AddressCandidate]:
-    return [
+    with_number = [
         AddressCandidate(m.start(), m.end(), m.group("value"), "high")
         for m in _STREET_PATTERN.finditer(text)
+    ]
+    covered = {(c.start, c.end) for c in with_number}
+    without_number = [
+        AddressCandidate(m.start(), m.end(), m.group("value"), "high")
+        for m in _STREET_NO_NUMBER_PATTERN.finditer(text)
+        if not any(m.start() < e and s < m.end() for s, e in covered)
+    ]
+    return with_number + without_number
+
+
+def _street_list_candidates(text: str) -> list[AddressCandidate]:
+    return [
+        AddressCandidate(m.start("value"), m.end("value"), m.group("value"), "high")
+        for m in _STREET_LIST_ANCHOR.finditer(text)
     ]
 
 
@@ -104,7 +141,12 @@ def _merge_adjacent(candidates: list[AddressCandidate], text: str) -> list[Addre
 
 
 def find_addresses(text: str, ner_locations: list[NerEntity] | None = None) -> list[AddressCandidate]:
-    candidates = _street_candidates(text) + _postal_candidates(text) + _anchor_candidates(text)
+    candidates = (
+        _street_candidates(text)
+        + _postal_candidates(text)
+        + _anchor_candidates(text)
+        + _street_list_candidates(text)
+    )
 
     if ner_locations:
         for entity in ner_locations:

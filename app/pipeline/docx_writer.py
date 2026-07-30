@@ -87,9 +87,23 @@ def apply_replacements(part: PartText, spans: list[tuple[int, int, str]]) -> boo
     if not spans:
         return False
 
+    # Detektory (przez `merge.resolve`) mogą celowo zwrócić zagnieżdżone span-y
+    # (np. nazwisko wewnątrz nazwy firmy, `nestable=True`) - sensowne na
+    # poziomie detekcji, ale dwie NAKŁADAJĄCE się podmiany na tych samych
+    # węzłach tekstowych psują się nawzajem (offsety liczone są raz, z
+    # tekstu przed jakąkolwiek podmianą). Zewnętrzny span już obejmuje
+    # wewnętrzny, więc zostaje tylko najszerszy z każdego zagnieżdżonego
+    # klastra - identyczna zasada jak w `main._select_outermost_spans`.
+    ordered = sorted(spans, key=lambda s: (s[0], -(s[1] - s[0])))
+    top_level: list[tuple[int, int, str]] = []
+    for s in ordered:
+        if any(o[0] <= s[0] and s[1] <= o[1] for o in top_level):
+            continue
+        top_level.append(s)
+
     # Sortuj malejąco po starcie, żeby podmiana jednego spana nie przesuwała
     # offsetów pozostałych (operujemy na kopii tekstu per-węzeł, nie na part.text).
-    spans_sorted = sorted(spans, key=lambda s: s[0], reverse=True)
+    spans_sorted = sorted(top_level, key=lambda s: s[0], reverse=True)
     changed = False
 
     for start, end, label in spans_sorted:

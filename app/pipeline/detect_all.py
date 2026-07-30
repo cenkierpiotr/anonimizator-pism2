@@ -38,7 +38,7 @@ from app.detectors import regon
 from app.detectors import vehicle
 from app.pipeline import date_shift, ner
 from app.pipeline.identity_cluster import IdentityRegistry
-from app.pipeline.merge import Detection, resolve
+from app.pipeline.merge import Detection, collapse_for_replacement, resolve
 
 _PRIORITY_CHECKSUM = 100
 _PRIORITY_CONTEXT_STRUCTURED = 90
@@ -49,6 +49,7 @@ _PRIORITY_LEGAL_ROLE = 70
 _PRIORITY_LITERAL_RESCAN = 65
 _PRIORITY_NER_PERSON = 60
 _PRIORITY_NER_ORG = 55
+_PRIORITY_COMPANY = 58  # wzorzec formy prawnej — pełniejszy niż NER ORG
 _PRIORITY_ADDRESS_MEDIUM = 50
 _PRIORITY_INSTITUTION = 45
 _PRIORITY_DIGITAL_ID = 40
@@ -187,6 +188,7 @@ def detect_in_text(
     detections += _from_detector(nip.detector, text, "nip", _PRIORITY_CHECKSUM)
     detections += _from_detector(regon.detector, text, "regon", _PRIORITY_CHECKSUM)
     detections += _from_detector(iban.detector, text, "iban", _PRIORITY_CHECKSUM)
+    detections += _from_detector(iban.fallback_detector, text, "iban", _PRIORITY_DIGITAL_ID)
     detections += _from_detector(land_register.detector, text, "land_register", _PRIORITY_CHECKSUM)
     detections += _from_detector(id_card.detector, text, "id_card", _PRIORITY_CHECKSUM)
     detections += _from_detector(id_card.passport_detector, text, "passport", _PRIORITY_CONTEXT_STRUCTURED)
@@ -214,6 +216,7 @@ def detect_in_text(
 
     detections += _from_detector(legal_roles.detector, text, "legal_role_person", _PRIORITY_LEGAL_ROLE)
     detections += _from_detector(institutions.detector, text, "institution", _PRIORITY_INSTITUTION, nestable=True)
+    detections += _from_detector(institutions.company_detector, text, "institution", _PRIORITY_COMPANY, nestable=True)
 
     entities = ner.find_entities(text, nlp=nlp)
     person_entities = [e for e in entities if e.label == "PERSON"]
@@ -247,7 +250,7 @@ def detect_in_text(
         potentially_missed_collector.extend(find_potentially_missed(text, resolved))
 
     replacements: list[Replacement] = []
-    for d in resolved:
+    for d in collapse_for_replacement(resolved):
         if d.category == "date" and registry.date_shifting_enabled:
             shifted = date_shift.shift_date_string(d.value, registry.date_shift_offset_days)
             if shifted != d.value:

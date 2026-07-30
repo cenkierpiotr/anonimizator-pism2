@@ -10,6 +10,7 @@ ani zapisywana na dysk).
 
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -124,10 +125,28 @@ def _detect_fn_for(
     return _detect_fn
 
 
+_ILLEGAL_XML_CHARS = re.compile(
+    "[\x00-\x08\x0b\x0c\x0e-\x1f\x7f￾￿﷐-﷯\ud800-\udfff]"
+)
+
+
+def _sanitize_for_docx(text: str) -> str:
+    """PDF/OCR/TXT nie mają struktury XML jak docx/odt - ich tekst bywa
+    zapisany z CRLF (`\\r\\n`) albo (rzadziej) pojedynczymi bajtami sterującymi
+    z uszkodzonego kodowania fontu. `lxml` odrzuca gołe `\\r` i inne znaki
+    sterujące przy ustawianiu tekstu węzła (`ValueError: ... no NULL bytes or
+    control characters`), więc trzeba je znormalizować/usunąć zanim trafią do
+    `python-docx` - inaczej cały PDF z warstwą tekstu w stylu Windows wywala
+    całe przetwarzanie zamiast dać wynik."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return _ILLEGAL_XML_CHARS.sub("", text)
+
+
 def _build_docx_from_paragraphs(paragraphs: list[str], output_path: Path) -> None:
     document = docx.Document()
     for text in paragraphs:
-        document.add_paragraph(text)
+        for line in _sanitize_for_docx(text).split("\n"):
+            document.add_paragraph(line)
     document.save(output_path)
 
 
@@ -290,11 +309,33 @@ def anonymize_file(
     return finalize_staged(staged, output_path)
 
 
+def _select_outermost_spans(
+    spans: list[tuple[int, int, str]]
+) -> list[tuple[int, int, str]]:
+    """`detect_fn` (przez `merge.resolve`) może celowo zwrócić zagnieżdżone
+    span-y (np. nazwisko wewnątrz nazwy firmy, miejscowość wewnątrz adresu -
+    oznaczone `nestable=True`, patrz `merge.py`) - to ma sens na poziomie
+    detekcji (obie informacje są prawdziwe), ale podmiana tekstu na płaskim
+    stringu nie potrafi nałożyć dwóch NAKŁADAJĄCYCH się zamian: podmiana
+    spanu wewnętrznego przesuwa/zamyka indeksy spanu zewnętrznego, co przy
+    naiwnym sklejaniu psuje wynik (np. urwany fragment liczby + osierocony
+    nawias z etykiety). Zewnętrzny span już obejmuje/ukrywa treść
+    wewnętrznego, więc przy samej podmianie tekstu zostaje tylko najszerszy
+    (najbardziej zewnętrzny) span z każdego zagnieżdżonego klastra."""
+    ordered = sorted(spans, key=lambda s: (s[0], -(s[1] - s[0])))
+    top: list[tuple[int, int, str]] = []
+    for start, end, label in ordered:
+        if any(o_start <= start and end <= o_end for o_start, o_end, _ in top):
+            continue
+        top.append((start, end, label))
+    return top
+
+
 def _apply_text(detect_fn, text: str) -> str:
     """Uruchamia `detect_fn` na płaskim tekście (TXT/PDF/OCR) i nakłada
     podmiany - te ścieżki nie mają struktury węzłów XML/ODF do rozbicia,
     więc operujemy na całym stringu naraz."""
-    spans = detect_fn(text)
+    spans = _select_outermost_spans(detect_fn(text))
     result = text
     for start, end, label in sorted(spans, key=lambda s: s[0], reverse=True):
         result = result[:start] + label + result[end:]

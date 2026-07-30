@@ -60,3 +60,38 @@ def resolve(detections: list[Detection]) -> list[Detection]:
             accepted.append(candidate)
 
     return sorted(accepted, key=lambda d: d.start)
+
+
+def collapse_for_replacement(resolved: list[Detection]) -> list[Detection]:
+    """`resolve()` celowo zachowuje zagnieżdżone pary z różnych kategorii obok
+    siebie (np. nazwisko wewnątrz nazwy firmy, miejscowość wewnątrz adresu) -
+    to poprawne dla samej detekcji, ale dwóch NAKŁADAJĄCYCH się podmian w
+    tekście nie da się jednocześnie nanieść bez wzajemnego popsucia offsetów
+    (podmiana jednego przesuwa/obcina drugi). Do faktycznej podmiany w
+    tekście z każdego zagnieżdżonego klastra bierzemy tylko span o
+    NAJWYŻSZYM priorytecie - niezależnie czy to zewnętrzny czy wewnętrzny.
+
+    To naprawia realny przypadek: ogólny detektor instytucji (niski priorytet,
+    zawsze `nestable=True`) bywa zbyt zachłanny i łapie fragment w stylu
+    "KW nr OL1G/00045213/8" jako jedną "nazwę instytucji", mimo że w środku
+    jest właściwy, dużo bardziej precyzyjny numer księgi wieczystej
+    (checksum, priorytet 100). Bez tej funkcji wygrywał przypadkowo
+    zewnętrzny (szerszy) span, maskując mniej trafną etykietą i - przy samej
+    podmianie na płaskim tekście - psując wynik. Gdy wygrywa span wewnętrzny,
+    otaczający go tekst ("KW nr ") zostaje nietknięty jako nieidentyfikujący
+    szablon - właściwa, wrażliwa część już została zamieniona."""
+    ordered = sorted(resolved, key=lambda d: (d.start, -(d.end - d.start)))
+    kept: list[Detection] = []
+    for candidate in ordered:
+        overlapping = [i for i, k in enumerate(kept) if k.start < candidate.end and candidate.start < k.end]
+        if not overlapping:
+            kept.append(candidate)
+            continue
+        best_kept_priority = max(kept[i].priority for i in overlapping)
+        if candidate.priority > best_kept_priority:
+            for i in sorted(overlapping, reverse=True):
+                del kept[i]
+            kept.append(candidate)
+        # W przeciwnym razie candidate przegrywa z już przyjętym, silniejszym
+        # spanem pokrywającym ten sam fragment - pomijamy go.
+    return sorted(kept, key=lambda d: d.start)

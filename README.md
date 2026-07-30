@@ -101,16 +101,16 @@ Etykiety numerowane (ta sama wartość = ten sam numer w obrębie jednego dokume
 
 - imiona i nazwiska osób (klastrowane per dokument: `[Osoba 1]`, `[Osoba 2]`...)
 - numery telefonów, w tym formaty zagraniczne i różne zapisy separatorów
-- adresy zamieszkania/siedziby (ulica, numer, kod pocztowy, miejscowość), także zapisy skrócone bez prefiksu ulicy
+- adresy zamieszkania/siedziby (ulica, numer, kod pocztowy, miejscowość), także zapisy skrócone bez prefiksu ulicy, samą nazwę ulicy bez numeru budynku (np. "ul. Moniuszki") oraz wyliczenia kilku ulic po jednym wspólnym słowie "ulicami" (typowe w opisach granic działek)
 - adresy e-mail
-- nazwy i adresy sądów oraz innych instytucji/organów (prokuratura, urzędy, KRS)
+- nazwy i adresy sądów oraz innych instytucji/organów (prokuratura, urzędy, KRS), a także nazwy spółek/firm rozpoznawane po przyrostku formy prawnej (sp. z o.o., S.A., sp. k., sp. j., s.c. i warianty)
 - PESEL
 - NIP
 - REGON
 - numer KRS
 - numer księgi wieczystej (z walidacją sumy kontrolnej)
 - numer działki ewidencyjnej i obręb, identyfikator TERYT działki
-- IBAN / numer rachunku bankowego (z walidacją sumy kontrolnej)
+- IBAN / numer rachunku bankowego (z walidacją sumy kontrolnej; numery o poprawnym kształcie, ale niezgodne z sumą kontrolną — np. wskutek literówki lub błędu OCR — są dodatkowo wykrywane niżej-priorytetowym wzorcem zapasowym, żeby nie przepuścić ich cicho)
 - numery faktur i umów, w tym kredytowych
 - numery polis ubezpieczeniowych i numery szkód
 - numer dowodu osobistego (z walidacją sumy kontrolnej), paszportu, karty pobytu, prawa jazdy
@@ -169,6 +169,14 @@ dlatego aplikacja łączy kilka niezależnych warstw zamiast polegać na jednym
   (PESEL, NIP, REGON, KRS, IBAN, numer księgi wieczystej, dowód osobisty
   i inne) — to nie modele AI, tylko wysoko precyzyjne wzorce matematyczne,
   ale kluczowe uzupełnienie modeli statystycznych.
+- **Rozstrzyganie nakładających się wykryć wg priorytetu, nie szerokości
+  spanu.** Gdy dwie warstwy trafiają w ten sam fragment tekstu (np. ogólny
+  detektor instytucji łapiący całe "KW nr XXXX/NNNNNNNN/N" jako jedną nazwę,
+  mimo że w środku jest ściślejszy, zwalidowany sumą kontrolną numer księgi
+  wieczystej), do faktycznej podmiany zawsze wygrywa span o wyższym
+  priorytecie (dokładniejszy detektor), niezależnie czy jest szerszy czy
+  węższy od konkurenta — zapobiega to niespójnemu etykietowaniu tej samej
+  wartości w różnych miejscach dokumentu.
 
 Wszystkie modele i dane działają **lokalnie, offline, bez GPU** — żaden
 fragment dokumentu nie jest nigdy wysyłany do zewnętrznego API czy usługi
