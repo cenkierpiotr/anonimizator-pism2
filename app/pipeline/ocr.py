@@ -8,13 +8,31 @@ w UI ("niska jakość OCR, wyniki detekcji mniej pewne").
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytesseract
 from PIL import Image, ImageOps
 
 _DEFAULT_LANG = "pol+eng"
 _LOW_CONFIDENCE_THRESHOLD = 60.0
+
+
+def _configure_bundled_tesseract() -> None:
+    """W buildzie PyInstaller (patrz `build/anonimizator.spec`) binarka
+    Tesseract jest zvendorowana obok .exe w podkatalogu `tesseract/`, bo
+    `pytesseract` woła ją jako zewnętrzny proces, nie przez import - bez tego
+    ustawienia zbundlowana aplikacja szukałaby `tesseract` w systemowym PATH,
+    którego na czystym Windows użytkownika końcowego nie ma."""
+    if not getattr(sys, "frozen", False):
+        return
+    bundled = Path(sys.executable).parent / "tesseract" / "tesseract.exe"
+    if bundled.exists():
+        pytesseract.pytesseract.tesseract_cmd = str(bundled)
+
+
+_configure_bundled_tesseract()
 
 
 @dataclass(frozen=True)
