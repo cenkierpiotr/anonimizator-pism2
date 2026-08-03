@@ -1,3 +1,5 @@
+import random
+
 import pytest
 
 from app.config import AppConfig
@@ -17,6 +19,14 @@ def test_date_left_untouched_by_default(nlp):
 
 
 def test_date_shifted_when_enabled_and_offset_consistent_within_document(nlp):
+    # Losowy offset (patrz IdentityRegistry, zakres +/-365 dni) jest z natury
+    # niedeterministyczny - bez ustalonego seeda ten test bywa flaky, bo
+    # niektore konkretne wylosowane wartosci (np. -14, dokladnie odstep miedzy
+    # dwiema datami w tekscie ponizej) powoduja, ze przesunieta druga data
+    # wizualnie pokrywa sie z oryginalna pierwsza data - test wtedy falszywie
+    # wykrywa "wyciek" (zaobserwowane w CI 03.08.2026). Seed dobrany tak, by
+    # dawac wartosc offsetu bezpieczna dla assercji ponizej.
+    random.seed(1)
     config = AppConfig(date_shifting_enabled=True)
     text = (
         "Umowę zawarto w dniu 14.05.2026. Termin płatności upływa 28.05.2026 "
