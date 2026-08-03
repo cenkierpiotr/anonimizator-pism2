@@ -22,6 +22,7 @@ import docx
 from app.config import AppConfig
 from app.pipeline import language_detect, legacy_convert, metadata_scrub, ocr, odt_reader, pdf_reader
 from app.pipeline import docx_writer
+from app.pipeline.text_reflow import reflow_lines
 from app.pipeline.detect_all import Replacement, detect_in_text
 from app.pipeline.format_detect import DocumentFormat, UnsupportedDocumentError, detect_format
 from app.pipeline.identity_cluster import IdentityRegistry
@@ -143,10 +144,19 @@ def _sanitize_for_docx(text: str) -> str:
 
 
 def _build_docx_from_paragraphs(paragraphs: list[str], output_path: Path) -> None:
+    """`paragraphs` to bloki tekstu już podzielone na akapity na wyzszym
+    poziomie (patrz `reflow_lines` dla PDF/OCR, `\\n\\n` dla TXT) - `\\n\\n`
+    wewnatrz kazdego bloku dzieli go na kolejne akapity .docx, a ewentualny
+    pojedynczy `\\n` ktory mimo to zostal (np. twardo zawijany TXT) jest
+    sklejany spacja zamiast trafiac dosłownie do w:t (surowy znak nowej linii
+    w tekscie runu nie jest prawidlowym zlamaniem wiersza w OOXML)."""
     document = docx.Document()
     for text in paragraphs:
-        for line in _sanitize_for_docx(text).split("\n"):
-            document.add_paragraph(line)
+        sanitized = _sanitize_for_docx(text)
+        for chunk in sanitized.split("\n\n"):
+            chunk = chunk.replace("\n", " ").strip()
+            if chunk:
+                document.add_paragraph(chunk)
     document.save(output_path)
 
 
@@ -219,7 +229,7 @@ def process_to_staging(
             page_paragraphs: list[str] = []
             for page in pages:
                 if page.text is not None:
-                    page_paragraphs.append(_apply_text(detect_fn, page.text))
+                    page_paragraphs.append(_apply_text(detect_fn, reflow_lines(page.text)))
                 else:
                     ocr_result = ocr.run_ocr(page.image)
                     if ocr_result.is_low_quality:
@@ -228,7 +238,7 @@ def process_to_staging(
                             f"(średnia pewność {ocr_result.mean_confidence:.0f}%) - "
                             "detekcja danych może być mniej pewna."
                         )
-                    page_paragraphs.append(_apply_text(detect_fn, ocr_result.text))
+                    page_paragraphs.append(_apply_text(detect_fn, reflow_lines(ocr_result.text)))
             _build_docx_from_paragraphs(page_paragraphs, tmp_output)
 
         elif detection.format == DocumentFormat.IMAGE:
@@ -244,7 +254,7 @@ def process_to_staging(
             warnings.append(
                 "Dokument wejściowy to obraz - wynik to zwykły tekst OCR, bez oryginalnego układu."
             )
-            anonymized_text = _apply_text(detect_fn, ocr_result.text)
+            anonymized_text = _apply_text(detect_fn, reflow_lines(ocr_result.text))
             _build_docx_from_paragraphs(anonymized_text.split("\n\n") or [anonymized_text], tmp_output)
 
         else:
