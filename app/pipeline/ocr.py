@@ -15,6 +15,8 @@ przy niskim confidence próbujemy PSM 3 (pełna automatyka układu) i PSM 11
 
 from __future__ import annotations
 
+import os
+import platform
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,12 +49,32 @@ def _configure_bundled_tesseract() -> None:
     Tesseract jest zvendorowana obok .exe w podkatalogu `tesseract/`, bo
     `pytesseract` woła ją jako zewnętrzny proces, nie przez import - bez tego
     ustawienia zbundlowana aplikacja szukałaby `tesseract` w systemowym PATH,
-    którego na czystym Windows użytkownika końcowego nie ma."""
+    którego na czystym Windows/Linuksie użytkownika końcowego nie ma.
+
+    Na Linuksie binarka `tesseract` (bez rozszerzenia) jest wynoszona razem z
+    jej rozwiązanymi bibliotekami współdzielonymi (.so) do tego samego
+    podkatalogu (patrz `.github/workflows/build-linux.yml`) - ustawiamy tam
+    dodatkowo `LD_LIBRARY_PATH`, żeby dynamiczny linker sięgnął po
+    zvendorowane wersje, a nie po (niepewne, zależne od dystrybucji)
+    biblioteki systemowe. `TESSDATA_PREFIX` wskazujemy jawnie na bundlowany
+    `resources/tessdata`, bo systemowy pakiet Tesseract na Linuksie ma swój
+    własny, inny domyślny katalog danych językowych."""
     if not getattr(sys, "frozen", False):
         return
-    bundled = Path(sys.executable).parent / "tesseract" / "tesseract.exe"
+    bundled_dir = Path(sys.executable).parent / "tesseract"
+    binary_name = "tesseract.exe" if platform.system() == "Windows" else "tesseract"
+    bundled = bundled_dir / binary_name
     if bundled.exists():
         pytesseract.pytesseract.tesseract_cmd = str(bundled)
+        if platform.system() != "Windows":
+            existing_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+            os.environ["LD_LIBRARY_PATH"] = (
+                f"{bundled_dir}{os.pathsep}{existing_ld_path}" if existing_ld_path else str(bundled_dir)
+            )
+
+    tessdata_dir = Path(sys.executable).parent / "resources" / "tessdata"
+    if tessdata_dir.is_dir():
+        os.environ["TESSDATA_PREFIX"] = str(tessdata_dir)
 
 
 _configure_bundled_tesseract()

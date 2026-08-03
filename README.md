@@ -1,6 +1,6 @@
 # Anonimizator Dokumentów
 
-Lokalna, w pełni offline aplikacja Windows do anonimizacji dokumentów (ze
+Lokalna, w pełni offline aplikacja (Windows i Linux) do anonimizacji dokumentów (ze
 szczególnym uwzględnieniem pism prawniczych — pozwów, umów, aktów notarialnych,
 wyroków — ale nie tylko). Przyjmuje dowolny format wejściowy (PDF z tekstem,
 PDF skan, DOCX, DOC, ODT, TXT, obraz skanu) i zwraca `.docx` z zanonimizowanymi
@@ -24,7 +24,9 @@ Wszystko dzieje się lokalnie na komputerze użytkownika — dokument **nigdy ni
 jest wysyłany donikąd** (z jednym wyjątkiem opisanym w sekcji "Uwaga o trybie
 offline" niżej).
 
-## Instalacja (dla użytkowników nietechnicznych — jeden plik, jeden klik)
+## Instalacja (dla użytkowników nietechnicznych)
+
+### Windows — jeden plik, jeden klik
 
 1. Przejdź do zakładki **[Releases](../../releases)** tego repozytorium (link
    widoczny też po prawej stronie strony głównej repo na GitHubie, sekcja
@@ -51,6 +53,25 @@ offline" niżej).
 Nie trzeba niczego więcej instalować — żadnego Pythona, żadnych dodatkowych
 programów. Wszystko potrzebne (silnik OCR, model rozpoznawania danych) jest już
 w instalatorze.
+
+### Linux — paczka portable (tar.gz)
+
+1. Przejdź do zakładki **[Releases](../../releases)** i pobierz plik
+   `AnonimizatorDokumentow-portable-linux-0.1.0.tar.gz`.
+2. Rozpakuj archiwum (`tar -xzf AnonimizatorDokumentow-portable-linux-0.1.0.tar.gz`)
+   w dowolnym katalogu.
+3. Uruchom `./AnonimizatorPism/AnonimizatorPism` — silnik OCR (Tesseract) jest
+   zbundlowany razem z aplikacją, nie trzeba niczego instalować przez `apt`.
+4. Obsługa starych plików `.doc` na Linuksie opiera się na **systemowym**
+   LibreOffice (`sudo apt install libreoffice` — typowo już zainstalowany na
+   większości dystrybucji z pulpitem), wykrywanym automatycznie przez
+   aplikację. W przeciwieństwie do Windows nie ma tu mechanizmu
+   automatycznego pobierania na żądanie — na Linuksie instalacja LibreOffice
+   jedną komendą jest na tyle prosta/standardowa, że nie było potrzeby
+   duplikować tego mechanizmu.
+
+Brak osobnego "instalatora" dla Linuksa (odpowiednika Inno Setup) — paczka
+portable to standardowy sposób dystrybucji tego typu aplikacji na Linuksie.
 
 ### Jak korzystać
 
@@ -201,11 +222,11 @@ dowolnym tekście. Dlatego:
   recall na tym zbiorze nie jest gwarancją 100% recall na każdym możliwym
   dokumencie realnym.
 
-## Rozwój (Linux, ten katalog)
+## Rozwój (ten katalog)
 
-Kod i logika (detektory, pipeline, GUI przez Tk) są w pełni testowalne na Linuksie.
-Tylko finalny `.exe`/instalator Windows wymaga natywnego builda — patrz sekcja "Build
-Windows" niżej.
+Kod i logika (detektory, pipeline, GUI przez Tk) są w pełni testowalne na Linuksie
+i Windows. Finalne bundle (instalator/portable Windows, portable Linux) powstają
+przez CI — patrz sekcje "Build Windows" i "Build Linux" niżej.
 
 ```
 python3 -m venv .venv
@@ -240,6 +261,24 @@ do późniejszej fazy). Przy pierwszym uruchomieniu na komputerze użytkownika S
 niemal na pewno pokaże ostrzeżenie "Windows chronił Twój komputer", a niektóre
 antywirusy mogą fałszywie zaflagować plik (PyInstaller jest w tym notorycznie częsty).
 To oczekiwane, nie błąd builda — patrz instrukcja instalacji wyżej.
+
+## Build Linux
+
+Paczka portable powstaje przez GitHub Actions (`.github/workflows/build-linux.yml`,
+runner `ubuntu-latest`). W odróżnieniu od Windows (gdzie Chocolatey daje
+samowystarczalny katalog instalacyjny Tesseract) na Linuksie binarka `tesseract`
+i jej biblioteki współdzielone (`liblept`, `libpng`, `libjpeg` itd., poza
+podstawowymi bibliotekami systemowymi typu `glibc`, świadomie niebundlowanymi)
+są rozwiązywane i wynoszone ręcznie przez `ldd` przed uruchomieniem
+`pyinstaller build/anonimizator.spec`. Wynik jest pakowany jako
+`AnonimizatorDokumentow-portable-linux-0.1.0.tar.gz` (artefakt workflow
+`anonimizator-pism-linux-portable`), bez odpowiednika instalatora Windows —
+patrz sekcja instalacji wyżej.
+
+**Ograniczenie do odnotowania**: bundle jest budowany na Ubuntu i zależy od
+kompatybilności `glibc` — na dystrybucjach opartych o `musl` (np. Alpine) może
+nie działać. Na typowych, mainstreamowych dystrybucjach z `glibc` (Ubuntu,
+Debian, Fedora, Arch i pochodne) powinien działać bez dodatkowych zależności.
 
 ## Zależności i licencje
 

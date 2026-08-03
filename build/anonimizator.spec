@@ -99,7 +99,19 @@ if _tesseract_vendor_dir.is_dir():
         if f.is_file():
             rel_parent = f.parent.relative_to(_tesseract_vendor_dir)
             dest = str(Path("tesseract") / rel_parent)
-            if f.suffix.lower() in (".dll", ".exe"):
+            # Windows: DLL/EXE. Linux: biblioteki .so (także wersjonowane,
+            # np. "libtesseract.so.5") oraz sama binarka "tesseract" bez
+            # rozszerzenia (patrz build-linux.yml - vendoring przez ldd) -
+            # to są jedyne pliki wykonywalne/biblioteki w tym katalogu,
+            # `_configure_bundled_tesseract` w app/pipeline/ocr.py oczekuje
+            # ich w podkatalogu "tesseract" obok głównego pliku wykonywalnego.
+            is_binary = (
+                f.suffix.lower() in (".dll", ".exe")
+                or f.suffix.lower() == ".so"
+                or ".so." in f.name
+                or f.name == "tesseract"
+            )
+            if is_binary:
                 _tesseract_binaries.append((str(f), dest))
             else:
                 _datas.append((str(f), dest))

@@ -1,0 +1,117 @@
+name: Build Linux bundle
+
+# Ten sam kompromis co w build-windows.yml: push do main + workflow_dispatch,
+# nie kazdy PR - build jest kosztowny (model spaCy, vendoring Tesseract,
+# PyInstaller one-dir).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ustaw Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Cache modelu spaCy + vendorowanego Tesseract
+        uses: actions/cache@v4
+        with:
+          path: |
+            resources/tessdata
+            build/vendor/tesseract-linux
+          key: linux-heavy-assets-${{ hashFiles('requirements.txt', 'build/anonimizator.spec') }}
+
+      - name: Zainstaluj zaleznosci Python (requirements.txt + PyInstaller)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Sprawdz obecnosc modelu spaCy pl_core_news_md
+        run: |
+          python -c "import pl_core_news_md; print('model OK:', pl_core_news_md.__file__)"
+
+      - name: Zainstaluj Tesseract OCR (apt) - binarka do testow i vendoringu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-pol tesseract-ocr-eng
+
+      - name: Pobierz brakujace dane jezykowe Tesseract (pol/eng) do resources/tessdata
+        # To sa dane WLASNE aplikacji (bundlowane per plan/spec), niezalezne
+        # od tessdata pakietu apt - to samo zrodlo co w build-windows.yml, wiec
+        # oba buildy uzywaja identycznych plikow jezykowych.
+        run: |
+          mkdir -p resources/tessdata
+          for lang in pol eng; do
+            dest="resources/tessdata/$lang.traineddata"
+            if [ -f "$dest" ]; then
+              echo "Juz istnieje: $dest - pomijam pobieranie."
+            else
+              url="https://github.com/tesseract-ocr/tessdata/raw/main/$lang.traineddata"
+              echo "Pobieram $url -> $dest"
+              curl -fsSL "$url" -o "$dest"
+            fi
+          done
+
+      - name: Vendoruj binarke Tesseract + jej biblioteki wspoldzielone (ldd)
+        # build/anonimizator.spec bundluje zawartosc build/vendor/tesseract/
+        # jesli istnieje. Na Linuksie (w odroznieniu od Windows/Chocolatey,
+        # gdzie caly katalog instalacji jest samowystarczalny) nie da sie po
+        # prostu skopiowac "calego pakietu apt" - zaleznosci wspoldzielone
+        # (liblept, libpng, libjpeg, libtiff, libopenjp2 itd.) trzeba
+        # rozwiazac recznie przez `ldd`, tak jak robia to narzedzia typu
+        # linuxdeploy/AppImage. Swiadomie NIE vendorujemy podstawowych
+        # bibliotek systemowych (glibc/libc/libm/libpthread/librt/ld-linux) -
+        # ich podmiana bywa niebezpieczna (np. psuje rozwiazywanie DNS) i nie
+        # jest potrzebna, bo te biblioteki sa praktycznie uniwersalnie
+        # kompatybilne miedzy wspolczesnymi dystrybucjami glibc (Alpine/musl
+        # pozostaje poza zakresem tego bundla - do odnotowania w README).
+        run: |
+          set -euo pipefail
+          dst="build/vendor/tesseract"
+          mkdir -p "$dst"
+          tesseract_bin="$(command -v tesseract)"
+          cp "$tesseract_bin" "$dst/tesseract"
+          chmod +x "$dst/tesseract"
+
+          skip_pattern='^(linux-vdso|libc\.so|libm\.so|libpthread\.so|libdl\.so|librt\.so|ld-linux)'
+          ldd "$tesseract_bin" | awk '{print $3}' | grep -E '^/' | while read -r lib; do
+            libname="$(basename "$lib")"
+            if echo "$libname" | grep -qE "$skip_pattern"; then
+              continue
+            fi
+            cp -n "$lib" "$dst/" || true
+          done
+
+          echo "Zvendorowano do $dst:"
+          ls -la "$dst"
+
+      - name: Uruchom testy (pytest)
+        run: |
+          pytest -q
+
+      - name: Zbuduj aplikacje (PyInstaller, one-dir)
+        run: |
+          pyinstaller build/anonimizator.spec --noconfirm --clean
+
+      - name: Spakuj wersje portable (tar.gz katalogu one-dir)
+        run: |
+          tar -czf AnonimizatorDokumentow-portable-linux-0.1.0.tar.gz -C dist AnonimizatorPism
+
+      - name: Upload wersji portable jako artefakt GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: anonimizator-pism-linux-portable
+          path: AnonimizatorDokumentow-portable-linux-0.1.0.tar.gz
+          if-no-files-found: error
+          retention-days: 30
