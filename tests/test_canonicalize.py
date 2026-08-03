@@ -28,3 +28,32 @@ def test_person_name_diacritics_and_case_insensitive():
 
 def test_default_falls_back_to_casefold_and_trim():
     assert canonicalize("unknown_category", "  Some Value  ") == "some value"
+
+
+def test_person_name_inflected_forms_canonicalize_the_same():
+    """Regresja: 'Annie Nowak' (celownik) i 'Anna Nowak' (mianownik) to ta sama
+    osoba wykryta przez NER w dwoch roznych formach gramatycznych - powinny
+    dostac ten sam klucz kanoniczny (i wiec ten sam numer [Osoba N])."""
+    nominative = canonicalize("legal_role_person", "Anna Nowak")
+    dative = canonicalize("legal_role_person", "Annie Nowak")
+    accusative = canonicalize("legal_role_person", "Annę Nowak")
+    genitive = canonicalize("legal_role_person", "Anny Nowak")
+    assert nominative == dative == accusative == genitive
+
+    assert canonicalize("legal_role_person", "Jan Kowalski") == canonicalize(
+        "legal_role_person", "Janowi Kowalskiemu"
+    )
+    assert canonicalize("legal_role_person", "Jan Kowalski") == canonicalize(
+        "legal_role_person", "Janem Kowalskim"
+    )
+
+
+def test_person_name_different_surnames_stay_distinct():
+    """Straznik przed nadgorliwym 'sklejaniem': rozne nazwiska (nawet o
+    podobnym wzorcu fleksyjnym) nie powinny dostac tego samego klucza."""
+    assert canonicalize("legal_role_person", "Jan Kowalski") != canonicalize(
+        "legal_role_person", "Jan Kowalczyk"
+    )
+    assert canonicalize("legal_role_person", "Anna Nowak") != canonicalize(
+        "legal_role_person", "Anna Nowicka"
+    )

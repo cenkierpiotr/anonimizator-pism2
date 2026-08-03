@@ -162,7 +162,18 @@ def _ocr_attempt(image: Image.Image, lang: str, psm: int) -> OcrResult:
     data = pytesseract.image_to_data(
         image, lang=lang, config=config, output_type=pytesseract.Output.DICT
     )
-    confidences = [int(c) for c in data.get("conf", []) if c not in ("-1", -1)]
+    # Tesseract czasem przypisuje wysoki `conf` tokenom, których rozpoznany
+    # tekst jest pusty/samą spacją (widmowe wykrycie "słowa" bez żadnych
+    # rozpoznanych znaków) - bez odfiltrowania ich tutaj, PSM który nie
+    # przeczytał NIC może dostać wyższą średnią pewność niż PSM, który
+    # faktycznie coś odczytał, i adaptacyjny retry wybierze ten gorszy,
+    # milczący wynik jako "najlepszy" (ostrzeżenie o niskiej jakości nigdy
+    # się wtedy nie pojawi, mimo braku odczytanego tekstu).
+    confidences = [
+        int(conf)
+        for conf, text in zip(data.get("conf", []), data.get("text", []))
+        if conf not in ("-1", -1) and text.strip()
+    ]
     mean_confidence = sum(confidences) / len(confidences) if confidences else 0.0
     text = pytesseract.image_to_string(image, lang=lang, config=config)
     return OcrResult(text=text, mean_confidence=mean_confidence, psm_used=psm)

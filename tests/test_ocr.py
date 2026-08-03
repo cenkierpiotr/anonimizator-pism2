@@ -24,6 +24,29 @@ def test_low_quality_flag_on_blank_image():
     assert result.text == "" or result.mean_confidence == 0.0
 
 
+def test_ocr_attempt_ignores_blank_text_tokens_in_confidence(monkeypatch):
+    """Regresja: Tesseract czasem zwraca token z tekstem pustym/samą spacją
+    i wysokim `conf` (widmowe wykrycie bez rozpoznanych znaków). Jeśli taki
+    token wchodzi do średniej pewności, PSM który nie odczytał NIC może
+    dostać wyższą confidence niż PSM, który faktycznie coś przeczytał -
+    adaptacyjny retry w run_ocr() wybrałby wtedy ten milczący wynik jako
+    "najlepszy", a ostrzeżenie o niskiej jakości OCR nigdy by się nie pojawiło
+    mimo braku odczytanego tekstu. Odkryte przy projektowaniu testu na
+    celowo zdegradowanym skanie (scripts/gui_tests/s07_ocr_quality.py)."""
+    fake_data = {
+        "conf": ["-1", "-1", "95", "95"],
+        "text": ["", "", " ", ""],
+    }
+
+    monkeypatch.setattr(ocr.pytesseract, "image_to_data", lambda *a, **k: fake_data)
+    monkeypatch.setattr(ocr.pytesseract, "image_to_string", lambda *a, **k: "")
+
+    result = ocr._ocr_attempt(Image.new("L", (10, 10), 255), "pol+eng", 3)
+
+    assert result.mean_confidence == 0.0
+    assert result.is_low_quality
+
+
 def test_preprocess_binarizes_to_pure_black_and_white():
     img = Image.new("RGB", (800, 200), "white")
     ImageDraw.Draw(img).text((10, 80), "Wyrok w imieniu Rzeczypospolitej", fill="black")

@@ -14,6 +14,34 @@ _WHITESPACE = re.compile(r"\s+")
 _NON_DIGITS = re.compile(r"\D+")
 _NON_ALNUM = re.compile(r"[^0-9A-Za-z]+")
 
+# Końcówki polskiej fleksji dla imion i nazwisk, posortowane od najdłuższej -
+# żeby np. "kowalskiego" trafiło w "skiego", a nie przedwcześnie w krótsze "ego".
+# Bez tego dwa niezależne wykrycia NER tej samej osoby w różnych przypadkach
+# (np. celownik "Annie Nowak" vs mianownik "Anna Nowak") dostawały różne klucze
+# kanoniczne i różne numery [Osoba N] - odkryte i zgłoszone podczas projektowania
+# testów interfejsu. Celowo uproszczone (prawdziwa polska fleksja ma liczne
+# wyjątki, np. zmiękczenia "Piotr" -> "Piotrze") - tania warstwa podnosząca
+# spójność klastrowania, nie próba pełnej poprawności językoznawczej (ten sam
+# kompromis co `app/detectors/inflect.py`).
+_NAME_CASE_SUFFIXES = tuple(
+    sorted(
+        {
+            "skiego", "skiemu", "skimi", "skich", "skiej", "ska", "ski", "skim",
+            "ckiego", "ckiemu", "ckimi", "ckich", "ckiej", "cka", "cki", "ckim",
+            "owi", "ego", "emu", "ie", "em", "om", "y", "a", "e",
+        },
+        key=len,
+        reverse=True,
+    )
+)
+
+
+def _stem_name_token(token: str) -> str:
+    for suffix in _NAME_CASE_SUFFIXES:
+        if token.endswith(suffix) and len(token) - len(suffix) >= 3:
+            return token[: -len(suffix)]
+    return token
+
 
 def _strip_diacritics(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
@@ -45,7 +73,8 @@ def _canonical_alnum_upper(value: str) -> str:
 
 def _canonical_person(value: str) -> str:
     collapsed = _WHITESPACE.sub(" ", value).strip()
-    return _strip_diacritics(collapsed).casefold()
+    normalized = _strip_diacritics(collapsed).casefold()
+    return " ".join(_stem_name_token(token) for token in normalized.split(" "))
 
 
 def _canonical_default(value: str) -> str:

@@ -344,15 +344,7 @@ class AnonymizerApp(ctk.CTk):
         if not output_dir:
             return
         paths = [self.items[key].path for key in keys]
-        try:
-            results = convert_many_to_pdf(paths, output_dir=output_dir)
-        except LibreOfficeNotAvailableError:
-            messagebox.showerror(
-                "Anonimizator Dokumentów",
-                "Konwersja do PDF wymaga komponentu LibreOffice - użyj przycisku "
-                "'Zainstaluj obsługę .doc' najpierw.",
-            )
-            return
+        results = convert_many_to_pdf(paths, output_dir=output_dir)
 
         ok = sum(1 for _, out, err in results if err is None)
         failed = [(inp, err) for inp, out, err in results if err is not None]
