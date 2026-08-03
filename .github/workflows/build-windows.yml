@@ -123,6 +123,13 @@ jobs:
         run: |
           pyinstaller build/anonimizator.spec --noconfirm --clean
 
+      - name: Spakuj wersje portable (ZIP katalogu one-dir, bez instalatora)
+        # Ten sam bundle co idzie do instalatora (dist/AnonimizatorPism/),
+        # spakowany jako ZIP dla osob ktore wola rozpakowac i uruchomic
+        # bez instalacji/uprawnien administratora zamiast Inno Setup.
+        run: |
+          Compress-Archive -Path "dist/AnonimizatorPism" -DestinationPath "AnonimizatorDokumentow-portable-0.1.0.zip"
+
       - name: Zainstaluj Inno Setup (Chocolatey)
         run: |
           choco install innosetup -y --no-progress
@@ -138,5 +145,13 @@ jobs:
         with:
           name: anonimizator-pism-installer
           path: build/Output/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload wersji portable jako artefakt GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: anonimizator-pism-portable
+          path: AnonimizatorDokumentow-portable-0.1.0.zip
           if-no-files-found: error
           retention-days: 30
