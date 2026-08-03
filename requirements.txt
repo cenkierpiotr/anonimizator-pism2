@@ -9,6 +9,12 @@ Pillow>=10.0
 # OpenCV: powyższe da się policzyć samym numpy, bez dużej zależności binarnej.
 numpy>=1.24
 spacy>=3.7
+# spacy.cli importuje click bezposrednio (spacy/cli/_util.py), ale nie
+# deklaruje go jako wlasna zaleznosc - polega na tym, ze typer go ciagnie
+# tranzytywnie. Nowsze wydania typer (>=0.27) przestaly wymagac click,
+# wiec bez jawnego wpisu `pip install -r requirements.txt` wywala sie
+# ModuleNotFoundError: No module named 'click' (zaobserwowane w CI 03.08.2026).
+click>=8.0
 # Model NER (nie jest na PyPI pod prostą nazwą, pobierany bezpośrednio z GitHub Releases)
 pl_core_news_md @ https://github.com/explosion/spacy-models/releases/download/pl_core_news_md-3.8.0/pl_core_news_md-3.8.0-py3-none-any.whl
 odfpy>=1.4
