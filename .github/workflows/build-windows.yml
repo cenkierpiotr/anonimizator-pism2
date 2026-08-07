@@ -128,7 +128,7 @@ jobs:
         # spakowany jako ZIP dla osob ktore wola rozpakowac i uruchomic
         # bez instalacji/uprawnien administratora zamiast Inno Setup.
         run: |
-          Compress-Archive -Path "dist/AnonimizatorPism" -DestinationPath "AnonimizatorDokumentow-portable-0.1.0.zip"
+          Compress-Archive -Path "dist/AnonimizatorPism" -DestinationPath "AnonimizatorDokumentow-portable-0.2.0.zip"
 
       - name: Zainstaluj Inno Setup (Chocolatey)
         run: |
@@ -152,6 +152,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: anonimizator-pism-portable
-          path: AnonimizatorDokumentow-portable-0.1.0.zip
+          path: AnonimizatorDokumentow-portable-0.2.0.zip
           if-no-files-found: error
           retention-days: 5

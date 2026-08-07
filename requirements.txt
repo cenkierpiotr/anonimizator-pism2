@@ -19,6 +19,10 @@ click>=8.0
 pl_core_news_md @ https://github.com/explosion/spacy-models/releases/download/pl_core_news_md-3.8.0/pl_core_news_md-3.8.0-py3-none-any.whl
 odfpy>=1.4
 customtkinter>=5.2
+# Przeciągnij-i-upuść plików w kolejce GUI. Podmienia metody na poziomie
+# tkinter.BaseWidget przy imporcie - działa z CTkFrame bez specjalnej klasy
+# okna głównego, wystarczy TkinterDnD._require(root) raz na start.
+tkinterdnd2>=0.4.2
 
 # dev/test only
 pytest>=8.0

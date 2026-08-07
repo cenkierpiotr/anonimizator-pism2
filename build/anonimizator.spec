@@ -169,6 +169,12 @@ _hiddenimports = [
     # w requirements.txt jako "pl_core_news_md" (nie na PyPI pod prostą nazwą,
     # patrz komentarz w requirements.txt).
     "pl_core_news_md",
+    # tkinterdnd2 (przeciągnij-i-upuść w GUI) - moduł sam w sobie jest
+    # statycznie importowany wprost w main_window.py, więc PyInstaller by go
+    # znalazł i tak; jawny wpis tu tylko dla czytelności obok collect_data_files
+    # niżej, które wciąga natywną binarkę tkdnd (bez niej `TkinterDnD._require`
+    # rzuci RuntimeError w runtime na czystym Windows).
+    "tkinterdnd2",
 ]
 
 # collect_submodules na najbardziej "dynamicznych" pakietach - taniej i
@@ -202,6 +208,15 @@ except Exception:
 try:
     _datas.extend(collect_data_files("spacy"))
     _datas.extend(collect_data_files("spacy_lookups_data"))
+except Exception:
+    pass
+
+# tkinterdnd2 - natywna biblioteka tkdnd (per-platforma, w tym Windows .dll)
+# jest dystrybuowana jako dane pakietu pod tkinterdnd2/tkdnd/, nie jako kod
+# Pythona - bez tego collect_data_files GUI wystartuje, ale przeciągnij-i-upuść
+# cicho się wyłączy (patrz obsługa RuntimeError w main_window._setup_drag_and_drop).
+try:
+    _datas.extend(collect_data_files("tkinterdnd2"))
 except Exception:
     pass
 

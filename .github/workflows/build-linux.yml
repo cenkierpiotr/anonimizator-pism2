@@ -106,12 +106,12 @@ jobs:
 
       - name: Spakuj wersje portable (tar.gz katalogu one-dir)
         run: |
-          tar -czf AnonimizatorDokumentow-portable-linux-0.1.0.tar.gz -C dist AnonimizatorPism
+          tar -czf AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz -C dist AnonimizatorPism
 
       - name: Upload wersji portable jako artefakt GitHub Actions
         uses: actions/upload-artifact@v4
         with:
           name: anonimizator-pism-linux-portable
-          path: AnonimizatorDokumentow-portable-linux-0.1.0.tar.gz
+          path: AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz
           if-no-files-found: error
           retention-days: 5

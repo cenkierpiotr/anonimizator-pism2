@@ -5,6 +5,17 @@ przypisy/komentarze, nagłówki/stopki każdej sekcji osobno oraz w:delText (tek
 usunięty przy śledzeniu zmian, wciąż fizycznie obecny w pliku). Ten moduł operuje
 bezpośrednio na XML wszystkich części pakietu, żeby żadne z tych miejsc nie
 zostało pominięte przy anonimizacji.
+
+Zakres skanowania (części pakietu, węzły tekstowe, wartości atrybutów) musi
+pozostać identyczny z `leak_check.py` — inaczej walidacja "widzi" więcej niż
+ten moduł potrafi realnie podmienić, co prowadzi do sytuacji "wykryto, ale nie
+zanonimizowano" (blokada zapisu bez możliwości naprawy). Dlatego skanujemy
+KAŻDĄ część `.xml`/`.rels` pakietu (nie tylko document/header/footer/...),
+KAŻDY tekst elementu (`.text` i `.tail`, nie tylko `w:t`/`w:delText`/
+`w:instrText`) oraz KAŻDĄ wartość atrybutu (np. `w:docVar` w settings.xml,
+`Target` w .rels, opisy alt-text) — dane wrażliwe w dokumentach prawniczych
+(zwłaszcza szablonach z polami scalania) potrafią siedzieć w każdym z tych
+miejsc.
 """
 
 from __future__ import annotations
@@ -20,18 +31,40 @@ from lxml import etree
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 NSMAP = {"w": W_NS}
 
-# Nazwy węzłów tekstowych, które muszą być objęte podmianą.
-TEXT_TAGS = (f"{{{W_NS}}}t", f"{{{W_NS}}}delText", f"{{{W_NS}}}instrText")
+# Lokalne nazwy atrybutów spec-owo gwarantowane jako czysto techniczne
+# (identyfikatory sesji edycji/rewizji, referencje relacyjne) — nigdy nie
+# niosą treści dokumentu, więc pomijamy je przy skanowaniu atrybutów jako
+# optymalizację wydajności (nie jako założenie o bezpieczeństwie: wszystko
+# poza tą krótką listą i tak przechodzi przez pełną detekcję).
+_TECHNICAL_ATTR_LOCALNAMES = frozenset(
+    {
+        "rsid", "rsidR", "rsidRDefault", "rsidRPr", "rsidP", "rsidTr", "rsidSect", "rsidRoot",
+        "id", "embed", "link",
+    }
+)
 
-# Części pakietu .docx, które mogą zawierać tekst widoczny/potencjalnie wrażliwy.
-XML_PART_GLOBS = (
+# Części pakietu, w których tekst bywa fizycznie rozbity na wiele sąsiednich
+# węzłów (np. jeden PESEL na dwa `w:r`/`w:t` o różnym formatowaniu) — tu
+# złączenie MUSI iść bez separatora, inaczej detekcja przeoczy rozbitą wartość
+# (patrz test_split_run_replacement). Każda inna część (docProps/metadane,
+# customXml, settings/styles/numbering/theme/fontTable/webSettings, .rels) ma
+# osobne, samodzielne wartości w oddzielnych elementach - złączenie ich bez
+# separatora tworzy fałszywe dopasowania na granicy dwóch niepowiązanych
+# wartości (np. rewizja "1" + data ISO doklejona wprost do kolejnej daty ISO
+# złożyły się w ciąg cyfr wyglądający jak numer telefonu - realny błąd
+# znaleziony testem e2e). Dlatego te części łączymy z separatorem.
+_FLOW_CONTENT_PART_PREFIXES = (
     "word/document.xml",
-    "word/header*.xml",
-    "word/footer*.xml",
+    "word/header",
+    "word/footer",
     "word/footnotes.xml",
     "word/endnotes.xml",
     "word/comments.xml",
 )
+
+
+def _is_flow_content_part(part_name: str) -> bool:
+    return any(part_name.startswith(prefix) for prefix in _FLOW_CONTENT_PART_PREFIXES)
 
 
 @dataclass
@@ -41,6 +74,7 @@ class TextNode:
     element: etree._Element
     start: int
     end: int  # koniec wyłączny
+    attr: str = "text"  # "text" albo "tail"
 
 
 @dataclass
@@ -53,29 +87,49 @@ class PartText:
     nodes: list[TextNode]
 
 
-def _iter_text_nodes(root: etree._Element) -> Iterable[etree._Element]:
-    for tag in TEXT_TAGS:
-        yield from root.iter(tag)
+def _iter_text_locations(elem: etree._Element) -> Iterable[tuple[etree._Element, str]]:
+    """Odtwarza kolejność `lxml`-owego `itertext()` (self.text, potem dla
+    każdego dziecka: cała jego poddrzewna treść, potem child.tail), ale zamiast
+    samego tekstu zwraca (element, "text"|"tail") — żeby offsety zbudowane tu
+    dokładnie odpowiadały temu, co widzi `leak_check._all_text_parts` przez
+    `root.itertext()`."""
+    if elem.text:
+        yield (elem, "text")
+    for child in elem:
+        yield from _iter_text_locations(child)
+        if child.tail:
+            yield (child, "tail")
 
 
 def load_part_text(part_name: str, xml_bytes: bytes) -> PartText:
-    """Parsuje jedną część XML i buduje złączony tekst z mapą offsetów."""
+    """Parsuje jedną część XML i buduje złączony tekst z mapą offsetów.
+
+    W częściach "przepływowych" (patrz `_FLOW_CONTENT_PART_PREFIXES`) fragmenty
+    są łączone bez separatora, żeby wartość rozbita na sąsiednie węzły (różne
+    formatowanie w jednym akapicie) dalej tworzyła jeden ciągły tekst do
+    detekcji. W pozostałych częściach (metadane, style, .rels...) wstawiamy
+    separator między fragmentami, żeby dwie niepowiązane wartości nigdy się
+    przypadkowo nie skleiły w fałszywe dopasowanie."""
     parser = etree.XMLParser(remove_blank_text=False)
     tree = etree.fromstring(xml_bytes, parser=parser).getroottree()
     root = tree.getroot()
+    flow = _is_flow_content_part(part_name)
+    separator = "" if flow else "\n"
 
     nodes: list[TextNode] = []
     pieces: list[str] = []
     offset = 0
-    for elem in _iter_text_nodes(root):
-        content = elem.text or ""
+    for elem, attr in _iter_text_locations(root):
+        content = getattr(elem, attr) or ""
         if content == "":
             continue
-        nodes.append(TextNode(element=elem, start=offset, end=offset + len(content)))
+        if pieces:
+            offset += len(separator)
+        nodes.append(TextNode(element=elem, start=offset, end=offset + len(content), attr=attr))
         pieces.append(content)
         offset += len(content)
 
-    return PartText(part_name=part_name, tree=tree, text="".join(pieces), nodes=nodes)
+    return PartText(part_name=part_name, tree=tree, text=separator.join(pieces), nodes=nodes)
 
 
 def apply_replacements(part: PartText, spans: list[tuple[int, int, str]]) -> bool:
@@ -108,29 +162,131 @@ def apply_replacements(part: PartText, spans: list[tuple[int, int, str]]) -> boo
         for node in affected:
             local_start = max(start, node.start) - node.start
             local_end = min(end, node.end) - node.start
-            original = node.element.text or ""
+            original = getattr(node.element, node.attr) or ""
             before = original[:local_start]
             after = original[local_end:]
 
             if not label_written:
-                node.element.text = before + label + after
+                setattr(node.element, node.attr, before + label + after)
                 label_written = True
             else:
-                node.element.text = before + after
+                setattr(node.element, node.attr, before + after)
 
     return changed
 
 
+def _replace_spans_in_string(text: str, spans: list[tuple[int, int, str]]) -> str:
+    for start, end, label in sorted(spans, key=lambda s: s[0], reverse=True):
+        text = text[:start] + label + text[end:]
+    return text
+
+
+def _attr_localname(key: str) -> str:
+    if key.startswith("{"):
+        return key.split("}", 1)[1]
+    return key
+
+
+# [Content_Types].xml nie niesie żadnej treści dokumentu — same rozszerzenia
+# plików i referencje do nazw części pakietu (`PartName`). Te referencje są
+# STRUKTURALNE: muszą się dosłownie zgadzać z rzeczywistymi nazwami wpisów w
+# archiwum ZIP, więc ta część jest pominięta w skanowaniu w całości (nie
+# ryzykujemy fałszywego trafienia detektora psującego integralność pakietu).
+_STRUCTURAL_ONLY_PARTS_EXACT = frozenset({"[Content_Types].xml"})
+
+# Części czysto strukturalne/typograficzne (katalog stylów, definicje list,
+# tabela czcionek, motyw kolorów, ustawienia web) — nigdy nie niosą treści
+# dokumentu, tylko nazwy/identyfikatory/maski bitowe. Realny błąd znaleziony
+# testem e2e: nazwa czcionki "Times New Roman" i maski hex w fontTable.xml
+# fałszywie dopasowywały się do detektorów (instytucja/Osoba/IMEI), a po
+# podmianie dokument tracił oryginalne formatowanie - sprzecznie z wymogiem
+# zachowania układu/formatowania oryginału. `word/settings.xml` CELOWO nie
+# jest tu wykluczone - to właśnie tam żyją `w:docVar` z realnymi danymi
+# (np. NIP wstrzyknięty przez pole scalania w szablonie pisma).
+_STRUCTURAL_ONLY_PARTS_PREFIXES = (
+    "word/fontTable.xml",
+    "word/numbering.xml",
+    "word/styles.xml",
+    "word/stylesWithEffects.xml",
+    "word/theme/",
+    "word/webSettings.xml",
+)
+
+
+def _is_structural_only_part(part_name: str) -> bool:
+    if part_name in _STRUCTURAL_ONLY_PARTS_EXACT:
+        return True
+    return any(part_name.startswith(prefix) for prefix in _STRUCTURAL_ONLY_PARTS_PREFIXES)
+
+
+def apply_attribute_replacements(
+    part_name: str, root: etree._Element, detect_fn: Callable[[str], list[tuple[int, int, str]]]
+) -> bool:
+    """Skanuje i podmienia dane wrażliwe zaszyte w WARTOŚCIACH atrybutów XML
+    (np. `w:docVar` w settings.xml, `Target` zewnętrznych hiperłączy w .rels,
+    alt-text obrazów, aliasy/tagi kontrolek zawartości) — miejsca, których
+    żaden węzeł `.text`/`.tail` nie obejmuje, a które `leak_check.py` i tak
+    przeszukuje.
+
+    Każda wartość atrybutu jest niezależnym łańcuchem znaków (nie częścią
+    złączonego `part.text`), więc `detect_fn` jest wywoływane osobno per
+    wartość — nadal na tym samym, per-dokumentowym rejestrze tożsamości
+    (ta sama zamknięta funkcja `detect_fn`), więc numeracja etykiet
+    pozostaje spójna z resztą dokumentu.
+
+    Uwaga bezpieczeństwa: w plikach `.rels` atrybut `Target` bywa
+    WEWNĘTRZNĄ ścieżką do innej części pakietu (np. `docProps/thumbnail.jpeg`,
+    `media/image1.png`) — musi zostać dosłownie nietknięty, inaczej podmiana
+    (nawet jeden fałszywie dodatni fragment) psuje archiwum ZIP w sposób
+    nie do naprawienia. Dlatego w `.rels` skanujemy WYŁĄCZNIE `Target`
+    relacji z `TargetMode="External"` (rzeczywiste URL-e/mailto, nigdy
+    referencje do części pakietu) — `Id`/`Type`/wewnętrzny `Target` zostają
+    zawsze bez zmian.
+    """
+    if _is_structural_only_part(part_name):
+        return False
+
+    changed = False
+    is_rels = part_name.endswith(".rels")
+
+    for elem in root.iter():
+        if not isinstance(elem.tag, str):
+            continue  # pomiń komentarze/PI XML (tag nie jest stringiem)
+
+        if is_rels:
+            if _attr_localname(elem.tag) != "Relationship" or elem.get("TargetMode") != "External":
+                continue
+            value = elem.get("Target")
+            if not value:
+                continue
+            spans = detect_fn(value)
+            if not spans:
+                continue
+            new_value = _replace_spans_in_string(value, spans)
+            if new_value != value:
+                elem.set("Target", new_value)
+                changed = True
+            continue
+
+        for key, value in list(elem.attrib.items()):
+            if not value or _attr_localname(key) in _TECHNICAL_ATTR_LOCALNAMES:
+                continue
+            spans = detect_fn(value)
+            if not spans:
+                continue
+            new_value = _replace_spans_in_string(value, spans)
+            if new_value != value:
+                elem.attrib[key] = new_value
+                changed = True
+    return changed
+
+
 def _iterate_target_parts(zf: zipfile.ZipFile) -> list[str]:
-    names = set(zf.namelist())
-    targets: list[str] = []
-    for pattern in XML_PART_GLOBS:
-        if "*" in pattern:
-            prefix, _, suffix = pattern.partition("*")
-            targets.extend(n for n in names if n.startswith(prefix) and n.endswith(suffix))
-        elif pattern in names:
-            targets.append(pattern)
-    return sorted(set(targets))
+    """Wszystkie części pakietu, które mogą nieść tekst/atrybuty XML —
+    świadomie tak samo szerokie jak `leak_check._all_text_parts` (`.xml` i
+    `.rels`), żeby to, co widzi walidacja przed zapisem, dokładnie odpowiadało
+    temu, co ten moduł faktycznie skanuje i potrafi podmienić."""
+    return sorted(n for n in zf.namelist() if n.endswith(".xml") or n.endswith(".rels"))
 
 
 def process_docx(
@@ -161,11 +317,24 @@ def process_docx(
     changed_parts: list[str] = []
 
     for name, xml_bytes in original_bytes.items():
-        part = load_part_text(name, xml_bytes)
-        if not part.text:
+        if _is_structural_only_part(name):
             continue
-        spans = detect_fn(part.text)
-        if apply_replacements(part, spans):
+
+        try:
+            part = load_part_text(name, xml_bytes)
+        except etree.XMLSyntaxError:
+            continue
+
+        part_changed = False
+        if part.text:
+            spans = detect_fn(part.text)
+            if apply_replacements(part, spans):
+                part_changed = True
+
+        if apply_attribute_replacements(name, part.tree.getroot(), detect_fn):
+            part_changed = True
+
+        if part_changed:
             changed_parts.append(name)
             modified_bytes[name] = etree.tostring(
                 part.tree, xml_declaration=True, encoding="UTF-8", standalone=True

@@ -31,7 +31,7 @@ offline" niżej).
 1. Przejdź do zakładki **[Releases](../../releases)** tego repozytorium (link
    widoczny też po prawej stronie strony głównej repo na GitHubie, sekcja
    "Releases").
-2. Pobierz najnowszy plik z rozszerzeniem `.exe` (np. `AnonimizatorDokumentow-Setup-0.1.0.exe`)
+2. Pobierz najnowszy plik z rozszerzeniem `.exe` (np. `AnonimizatorDokumentow-Setup-0.2.0.exe`)
    — to jest jedyny plik potrzebny do instalacji.
 3. Uruchom pobrany plik podwójnym kliknięciem.
 4. **Windows prawie na pewno pokaże niebieski ekran "Windows chronił Twój
@@ -57,8 +57,8 @@ w instalatorze.
 ### Linux — paczka portable (tar.gz)
 
 1. Przejdź do zakładki **[Releases](../../releases)** i pobierz plik
-   `AnonimizatorDokumentow-portable-linux-0.1.0.tar.gz`.
-2. Rozpakuj archiwum (`tar -xzf AnonimizatorDokumentow-portable-linux-0.1.0.tar.gz`)
+   `AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz`.
+2. Rozpakuj archiwum (`tar -xzf AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz`)
    w dowolnym katalogu.
 3. Uruchom `./AnonimizatorPism/AnonimizatorPism` — silnik OCR (Tesseract) jest
    zbundlowany razem z aplikacją, nie trzeba niczego instalować przez `apt`.
@@ -271,7 +271,7 @@ i jej biblioteki współdzielone (`liblept`, `libpng`, `libjpeg` itd., poza
 podstawowymi bibliotekami systemowymi typu `glibc`, świadomie niebundlowanymi)
 są rozwiązywane i wynoszone ręcznie przez `ldd` przed uruchomieniem
 `pyinstaller build/anonimizator.spec`. Wynik jest pakowany jako
-`AnonimizatorDokumentow-portable-linux-0.1.0.tar.gz` (artefakt workflow
+`AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz` (artefakt workflow
 `anonimizator-pism-linux-portable`), bez odpowiednika instalatora Windows —
 patrz sekcja instalacji wyżej.
 

@@ -26,7 +26,7 @@ from app.pipeline.text_reflow import reflow_lines
 from app.pipeline.detect_all import Replacement, detect_in_text
 from app.pipeline.format_detect import DocumentFormat, UnsupportedDocumentError, detect_format
 from app.pipeline.identity_cluster import IdentityRegistry
-from app.pipeline.leak_check import assert_clean
+from app.pipeline.leak_check import LeakDetectedError, LeakFinding, check_docx
 from app.pipeline.temp_hygiene import STAGING_DIR_PREFIX
 
 _LANGUAGE_SAMPLE_CHAR_LIMIT = 5000
@@ -59,10 +59,15 @@ class StagedAnonymization:
     czeka w katalogu tymczasowym na obowiązkowy ekran weryfikacji w GUI
     (patrz plan, punkt 7 sekcji "Jakość detekcji i warstwa bezpieczeństwa").
 
-    `staging_docx_path` już przeszedł metadata_scrub + leak_check (blokada
-    zapisu działa na tym etapie, nie dopiero przy finalizacji) - GUI może
-    bezpiecznie otworzyć go i pokazać podgląd tekstu/liczników per kategoria
-    przed przeniesieniem na docelową ścieżkę.
+    `staging_docx_path` już przeszedł metadata_scrub + re-skan `leak_check`.
+    Jeśli re-skan coś znalazł, wynik NIE jest odrzucany automatycznie -
+    trafia do `leak_findings`, a GUI pokazuje to jako obowiązkowe ostrzeżenie
+    na ekranie weryfikacji z jawnym potwierdzeniem, zamiast bezpowrotnie
+    blokować zapis (użytkownik musi mieć zawsze możliwość zapisania pliku -
+    patrz `feedback_...` w historii projektu). Ścieżki BEZ ekranu weryfikacji
+    (`anonymize_file`/`anonymize_files`, batch/testy) nadal twardo blokują
+    zapis przy niepustym `leak_findings`, bo tam nie ma człowieka, który mógłby
+    świadomie podjąć decyzję o zapisaniu mimo ostrzeżenia.
 
     Wywołujący MUSI zakończyć każdy staging przez `finalize_staged()` (użytkownik
     zatwierdził) albo `discard_staged()` (użytkownik odrzucił/anulował) -
@@ -76,6 +81,7 @@ class StagedAnonymization:
     warnings: list[str]
     registry: IdentityRegistry
     potentially_missed: list[str] = field(default_factory=list)
+    leak_findings: list[LeakFinding] = field(default_factory=list)
 
     @property
     def entity_count(self) -> int:
@@ -168,15 +174,15 @@ def process_to_staging(
     zatrzymując wynik w katalogu tymczasowym do obowiązkowego przeglądu w GUI
     (patrz `StagedAnonymization`) zamiast dostarczać go od razu.
 
-    Metadane są już wyczyszczone, a re-skan "leak" już przeszedł pozytywnie w
-    momencie zwrócenia wyniku - blokada zapisu (patrz plan, krok [5]) działa
-    na tym etapie, nie dopiero przy finalizacji.
+    Metadane są już wyczyszczone i re-skan "leak" (patrz plan, krok [5]) już
+    się wykonał - jego wynik trafia do `StagedAnonymization.leak_findings`
+    zamiast blokować zwrócenie wyniku (patrz komentarz przy tym polu).
 
     Rzuca `UnsupportedDocumentError` (nierozpoznany/uszkodzony format),
-    `PasswordRequiredError` (PDF wymaga hasła), `LibreOfficeNotAvailableError`
-    (.doc bez pobranego komponentu) albo `LeakDetectedError` (blokada, jeśli
-    cokolwiek zwalidowanego przetrwało - błąd wewnętrzny detektorów, nie
-    powinien normalnie wystąpić).
+    `PasswordRequiredError` (PDF wymaga hasła) albo `LibreOfficeNotAvailableError`
+    (.doc bez pobranego komponentu). NIE rzuca już `LeakDetectedError` - to
+    wywołujący (GUI albo `anonymize_file` dla ścieżek bez ekranu weryfikacji)
+    decyduje, co zrobić z niepustym `leak_findings`.
     """
     options = options or AnonymizeOptions()
     input_path = Path(input_path)
@@ -282,7 +288,7 @@ def process_to_staging(
             )
 
         metadata_scrub.scrub_docx_metadata(tmp_output)
-        assert_clean(tmp_output)
+        leak_findings = check_docx(tmp_output)
 
         seen_snippets: set[str] = set()
         deduped_missed: list[str] = []
@@ -301,6 +307,7 @@ def process_to_staging(
             warnings=warnings,
             registry=registry,
             potentially_missed=deduped_missed,
+            leak_findings=leak_findings,
         )
     except Exception:
         shutil.rmtree(staging_dir, ignore_errors=True)
@@ -314,8 +321,15 @@ def anonymize_file(
 ) -> AnonymizeResult:
     """Wygodny skrót jednokrokowy (bez ekranu weryfikacji) - przetwarza i od razu
     zatwierdza wynik pod `output_path`. Używany przez wsadową `anonymize_files`
-    i tam, gdzie mandatowy podgląd nie jest wymagany (np. testy end-to-end)."""
+    i tam, gdzie mandatowy podgląd nie jest wymagany (np. testy end-to-end).
+
+    W przeciwieństwie do `process_to_staging` TU nadal twardo blokujemy zapis
+    przy niepustym `leak_findings` - bez ekranu weryfikacji nie ma człowieka,
+    który mógłby świadomie zdecydować o zapisaniu mimo ostrzeżenia."""
     staged = process_to_staging(input_path, options)
+    if staged.leak_findings:
+        discard_staged(staged)
+        raise LeakDetectedError(staged.leak_findings)
     return finalize_staged(staged, output_path)
 
 

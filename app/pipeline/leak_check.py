@@ -15,6 +15,7 @@ from pathlib import Path
 from lxml import etree
 
 from app.detectors import registry
+from app.pipeline import docx_writer
 
 
 @dataclass
@@ -34,27 +35,48 @@ class LeakDetectedError(RuntimeError):
         super().__init__(f"Wykryto niezanonimizowane dane przed zapisem: {summary}")
 
 
+def _attr_fragments(part_name: str, root) -> list[str]:
+    """Wartości atrybutów do przeskanowania — świadomie DOKŁADNIE ten sam
+    zakres co `docx_writer.apply_attribute_replacements` (patrz komentarz
+    bezpieczeństwa tam): nigdy `[Content_Types].xml`, a w `.rels` wyłącznie
+    `Target` relacji zewnętrznych. Inaczej ten moduł potrafiłby zgłosić
+    "wyciek" w miejscu, którego writer celowo nigdy nie dotyka (żeby nie
+    zepsuć integralności archiwum ZIP) — co byłoby dokładnie tym dead-endem
+    blokującym zapis bez możliwości naprawy, którego ma unikać cały ten fix."""
+    if docx_writer._is_structural_only_part(part_name):
+        return []
+    if part_name.endswith(".rels"):
+        return [
+            elem.get("Target")
+            for elem in root.iter()
+            if elem.get("TargetMode") == "External" and elem.get("Target")
+        ]
+    return [v for elem in root.iter() for v in elem.attrib.values() if v]
+
+
 def _all_text_parts(docx_path: Path) -> dict[str, str]:
     """Zwraca {nazwa_części: cały_tekst_widoczny_i_ukryty} dla całego pakietu,
-    włącznie z docProps (metadane też mogą nieść dane)."""
+    włącznie z docProps (metadane też mogą nieść dane).
+
+    Tekst węzłów budujemy przez `docx_writer.load_part_text` — DOKŁADNIE tę
+    samą funkcję, której używa writer do podmiany — zamiast osobnej
+    reimplementacji. To jedyny sposób na trwałą gwarancję parytetu zakresu:
+    dwie niezależne implementacje tego samego "złącz tekst części" już raz
+    się rozjechały (stąd w ogóle ten cały fix) i ponownie by się rozjechały,
+    gdyby ktoś zmienił jedną bez pamiętania o drugiej."""
     texts: dict[str, str] = {}
     with zipfile.ZipFile(docx_path, "r") as zf:
         for name in zf.namelist():
-            if not name.endswith(".xml"):
+            if not (name.endswith(".xml") or name.endswith(".rels")):
+                continue
+            if docx_writer._is_structural_only_part(name):
                 continue
             try:
-                root = etree.fromstring(zf.read(name))
+                part = docx_writer.load_part_text(name, zf.read(name))
             except etree.XMLSyntaxError:
                 continue
-            # Złącz WSZYSTKIE fragmenty tekstowe w części, niezależnie od tagu —
-            # celowo szerzej niż docx_writer (tam liczy się tylko w:t/w:delText/
-            # w:instrText do podmiany; tu chcemy złapać cokolwiek, co mogłoby
-            # nieść dane, łącznie z atrybutami w .rels).
-            fragments = [t for t in root.itertext() if t and t.strip()]
-            attr_fragments = [
-                v for elem in root.iter() for v in elem.attrib.values() if v
-            ]
-            texts[name] = "\n".join(fragments + attr_fragments)
+            root = part.tree.getroot()
+            texts[name] = "\n".join([part.text] + _attr_fragments(name, root))
     return texts
 
 

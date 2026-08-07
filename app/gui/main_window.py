@@ -30,6 +30,7 @@ from typing import Callable
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
+from tkinterdnd2 import DND_FILES, TkinterDnD
 
 from app.main import (
     AnonymizeOptions,
@@ -160,7 +161,36 @@ class AnonymizerApp(ctk.CTk):
         self.pending_keys: list[str] = []
 
         self._build_layout()
+        self._setup_drag_and_drop()
         self.after(self.POLL_INTERVAL_MS, self._poll_queue)
+
+    # -- przeciągnij i upuść --------------------------------------------
+
+    def _setup_drag_and_drop(self) -> None:
+        """Rejestruje listę plików jako cel drop - przeciągnięcie pliku/ów
+        z eksploratora systemowego dodaje je do kolejki dokładnie tak samo
+        jak przycisk "Dodaj pliki...". `TkinterDnD._require` ładuje
+        natywną bibliotekę tkdnd do interpretera Tcl tego okna raz na start;
+        samo `drop_target_register`/`dnd_bind` jest dostępne na KAŻDYM
+        widgecie Tk (w tym CTk) od chwili zaimportowania `tkinterdnd2`, bo
+        biblioteka podmienia je na poziomie `tkinter.BaseWidget` - nie trzeba
+        żadnej specjalnej klasy okna głównego."""
+        try:
+            TkinterDnD._require(self)
+        except RuntimeError as exc:
+            # Brak natywnej biblioteki tkdnd dla tej platformy - funkcja
+            # przeciągnij-i-upuść nie będzie dostępna, ale reszta aplikacji
+            # (w tym przycisk "Dodaj pliki...") działa normalnie dalej.
+            self.status_label.configure(
+                text=f"Uwaga: przeciągnij i upuść niedostępne na tym systemie ({exc})."
+            )
+            return
+        self.list_frame.drop_target_register(DND_FILES)
+        self.list_frame.dnd_bind("<<Drop>>", self._on_drop)
+
+    def _on_drop(self, event) -> None:
+        raw_paths = self.list_frame.tk.splitlist(event.data)
+        self._add_paths(Path(p) for p in raw_paths)
 
     # -- layout -------------------------------------------------------
 
@@ -252,14 +282,28 @@ class AnonymizerApp(ctk.CTk):
                 ("Wszystkie pliki", "*.*"),
             ],
         )
-        for raw in paths:
-            path = Path(raw)
+        self._add_paths(Path(raw) for raw in paths)
+
+    def _add_paths(self, paths) -> None:
+        """Dodaje pliki do kolejki - współdzielone przez przycisk "Dodaj
+        pliki..." i przeciągnij-i-upuść, żeby oba miały identyczne
+        zachowanie (pomijanie duplikatów/katalogów)."""
+        skipped_dirs = 0
+        for path in paths:
+            if path.is_dir():
+                skipped_dirs += 1
+                continue
             key = str(path)
             if key in self.items:
                 continue
             item = QueueItem(path=path)
             self.items[key] = item
             self._add_row(item)
+        if skipped_dirs:
+            messagebox.showinfo(
+                "Anonimizator Dokumentów",
+                f"Pominięto {skipped_dirs} katalog(ów) - przeciągnij same pliki.",
+            )
 
     def _selected_keys(self) -> list[str]:
         return [
@@ -489,6 +533,39 @@ class ReviewWindow(ctk.CTkToplevel):
                     missed_frame, text=f"• ...{snippet}...", anchor="w", wraplength=760, justify="left"
                 ).pack(anchor="w", padx=16, pady=2)
 
+        self.leak_ack_var: ctk.BooleanVar | None = None
+        if staged.leak_findings:
+            leak_frame = ctk.CTkFrame(self, fg_color="#7a1f1f")
+            leak_frame.pack(side="top", fill="x", padx=14, pady=4)
+            ctk.CTkLabel(
+                leak_frame,
+                text=(
+                    "OSTRZEŻENIE: ponowne skanowanie zapisanego pliku wykryło dane, "
+                    "które mogły przetrwać anonimizację:"
+                ),
+                font=ctk.CTkFont(weight="bold"),
+                text_color="white",
+                anchor="w",
+                wraplength=760,
+                justify="left",
+            ).pack(anchor="w", padx=8, pady=(6, 0))
+            for finding in staged.leak_findings:
+                ctk.CTkLabel(
+                    leak_frame,
+                    text=f"• {finding.detector_name} x{finding.count} w {finding.part_name}",
+                    text_color="white",
+                    anchor="w",
+                    wraplength=760,
+                    justify="left",
+                ).pack(anchor="w", padx=16, pady=2)
+            self.leak_ack_var = ctk.BooleanVar(value=False)
+            ctk.CTkCheckBox(
+                leak_frame,
+                text="Rozumiem ryzyko i chcę mimo to zapisać ten plik.",
+                variable=self.leak_ack_var,
+                text_color="white",
+            ).pack(anchor="w", padx=8, pady=(4, 8))
+
         ctk.CTkLabel(self, text="Podgląd zanonimizowanego tekstu:", anchor="w").pack(
             side="top", fill="x", padx=14, pady=(8, 2)
         )
@@ -525,6 +602,12 @@ class ReviewWindow(ctk.CTkToplevel):
     def _on_approve(self) -> None:
         staged = self.item.staged
         assert staged is not None
+        if staged.leak_findings and (self.leak_ack_var is None or not self.leak_ack_var.get()):
+            messagebox.showwarning(
+                "Anonimizator Dokumentów",
+                "Zaznacz checkbox 'Rozumiem ryzyko...' powyżej, żeby zapisać plik mimo ostrzeżenia.",
+            )
+            return
         output_path = filedialog.asksaveasfilename(
             title="Zapisz zanonimizowany dokument",
             initialfile=neutral_output_filename(),
