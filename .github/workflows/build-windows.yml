@@ -146,7 +146,7 @@ jobs:
           name: anonimizator-pism-installer
           path: build/Output/*.exe
           if-no-files-found: error
-          retention-days: 5
+          retention-days: 1
 
       - name: Upload wersji portable jako artefakt GitHub Actions
         uses: actions/upload-artifact@v4
@@ -154,4 +154,4 @@ jobs:
           name: anonimizator-pism-portable
           path: AnonimizatorDokumentow-portable-0.2.0.zip
           if-no-files-found: error
-          retention-days: 5
+          retention-days: 1

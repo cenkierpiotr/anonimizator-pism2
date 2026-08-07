@@ -114,4 +114,4 @@ jobs:
           name: anonimizator-pism-linux-portable
           path: AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz
           if-no-files-found: error
-          retention-days: 5
+          retention-days: 1
