@@ -11,6 +11,8 @@ on:
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -108,10 +110,17 @@ jobs:
         run: |
           tar -czf AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz -C dist AnonimizatorPism
 
-      - name: Upload wersji portable jako artefakt GitHub Actions
-        uses: actions/upload-artifact@v4
-        with:
-          name: anonimizator-pism-linux-portable
-          path: AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz
-          if-no-files-found: error
-          retention-days: 1
+      - name: Publikuj wersje portable bezposrednio do GitHub Release
+        # Patrz komentarz w build-windows.yml - to samo uzasadnienie:
+        # omijamy limit 0.5GB Actions storage, wgrywajac wprost do Release.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="0.2.0"
+          tag="v$version"
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$tag" "AnonimizatorDokumentow-portable-linux-$version.tar.gz" --repo "${{ github.repository }}" --clobber
+          else
+            echo "Brak Release $tag - pomijam publikacje artefaktu (zwykly build bez tagu wydania)."
+          fi

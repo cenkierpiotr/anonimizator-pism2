@@ -24,6 +24,8 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     defaults:
       run:
         shell: pwsh
@@ -140,18 +142,25 @@ jobs:
         run: |
           ISCC.exe build\installer.iss
 
-      - name: Upload instalatora jako artefakt GitHub Actions
-        uses: actions/upload-artifact@v4
-        with:
-          name: anonimizator-pism-installer
-          path: build/Output/*.exe
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload wersji portable jako artefakt GitHub Actions
-        uses: actions/upload-artifact@v4
-        with:
-          name: anonimizator-pism-portable
-          path: AnonimizatorDokumentow-portable-0.2.0.zip
-          if-no-files-found: error
-          retention-days: 1
+      - name: Publikuj instalator + wersje portable bezposrednio do GitHub Release
+        # Celowo NIE actions/upload-artifact: prywatne repo dzieli z kontem
+        # twardy limit 0.5GB na Actions storage (artefakty + Packages) - raz
+        # wyczerpany, blokuje KAZDY kolejny upload na koncie, a przeliczenie
+        # zajmuje udokumentowane 6-12h nawet po skasowaniu danych (zdarzylo
+        # sie realnie w tym repo). GitHub Release assets to zupelnie inny,
+        # znacznie wiekszy limit (do 2GB/plik) - wgrywamy tam wprost z joba,
+        # pomijajac Actions storage w ogole. Wymaga, zeby tag wersji (np.
+        # v0.2.0) i odpowiadajacy mu Release juz istnialy (tworzone recznie
+        # przy wydaniu) - jesli nie istnieja, krok jest pomijany bez bledu,
+        # zeby zwykly build z push do main (bez tagu) dalej przechodzil.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "0.2.0"
+          $tag = "v$version"
+          gh release view $tag --repo ${{ github.repository }} *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag "build/Output/*.exe" "AnonimizatorDokumentow-portable-$version.zip" --repo ${{ github.repository }} --clobber
+          } else {
+            Write-Host "Brak Release $tag - pomijam publikacje artefaktow (zwykly build bez tagu wydania)."
+          }
