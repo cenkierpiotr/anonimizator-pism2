@@ -31,7 +31,7 @@ offline" niżej).
 1. Przejdź do zakładki **[Releases](../../releases)** tego repozytorium (link
    widoczny też po prawej stronie strony głównej repo na GitHubie, sekcja
    "Releases").
-2. Pobierz najnowszy plik z rozszerzeniem `.exe` (np. `AnonimizatorDokumentow-Setup-0.2.0.exe`)
+2. Pobierz najnowszy plik z rozszerzeniem `.exe` (np. `AnonimizatorDokumentow-Setup-0.3.0.exe`)
    — to jest jedyny plik potrzebny do instalacji.
 3. Uruchom pobrany plik podwójnym kliknięciem.
 4. **Windows prawie na pewno pokaże niebieski ekran "Windows chronił Twój
@@ -57,8 +57,8 @@ w instalatorze.
 ### Linux — paczka portable (tar.gz)
 
 1. Przejdź do zakładki **[Releases](../../releases)** i pobierz plik
-   `AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz`.
-2. Rozpakuj archiwum (`tar -xzf AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz`)
+   `AnonimizatorDokumentow-portable-linux-0.3.0.tar.gz`.
+2. Rozpakuj archiwum (`tar -xzf AnonimizatorDokumentow-portable-linux-0.3.0.tar.gz`)
    w dowolnym katalogu.
 3. Uruchom `./AnonimizatorPism/AnonimizatorPism` — silnik OCR (Tesseract) jest
    zbundlowany razem z aplikacją, nie trzeba niczego instalować przez `apt`.
@@ -98,7 +98,7 @@ albo zainstalować komponent z pliku pobranego wcześniej na innym komputerze.
 ## Funkcje
 
 - Obsługa formatów wejściowych: PDF z warstwą tekstową, PDF-skan (bez tekstu), DOCX, DOC (przez opcjonalny, pobierany na żądanie LibreOffice), ODT, TXT, obrazy (JPG/PNG/TIFF)
-- OCR (Tesseract, `pol+eng`) z ostrzeżeniem przy niskiej pewności rozpoznania i tolerancją typowych pomyłek OCR w danych ze checksumem (O/0, l/1/I, S/5, B/8, Z/2)
+- OCR (Tesseract, `pol+eng`) z ostrzeżeniem przy niskiej pewności rozpoznania i tolerancją typowych pomyłek OCR w danych ze checksumem (O/0, l/1/I, S/5, B/8, Z/2) — działa też wtedy, gdy OCR podstawił literę w miejscu cyfry (np. PESEL odczytany jako "8O1231O1234"), nie tylko gdy sam checksum się nie zgadza
 - Automatyczne rozpoznanie obcojęzycznego dokumentu i ostrzeżenie, że detekcja osób może być ograniczona (modele trenowane na polskim korpusie)
 - Wielowarstwowa detekcja danych łącząca regexy z checksumami, gazetteery zbudowane z pełnych oficjalnych rejestrów publicznych, wzorce ról prawnych, model NER oraz drugi przebieg literalny na formach fleksyjnych znalezionych nazwisk — patrz sekcja "Zastosowane modele i mechanizmy detekcji" niżej
 - Numerowanie etykiet per kategoria i per dokument (`[Osoba 1]`, `[Osoba 2]`, `[numer telefonu 1]`...) — ta sama wartość w różnych miejscach dokumentu dostaje ten sam numer, różne wartości różne numery, więc kontekst "kto jest kim" zostaje zachowany mimo anonimizacji
@@ -108,7 +108,10 @@ albo zainstalować komponent z pliku pobranego wcześniej na innym komputerze.
 - Heurystyka "potencjalnie pominięte": każdy token pisany wielką literą (nie na początku zdania), nieznany jako rzeczownik pospolity i niezłapany przez żadną warstwę detekcji, trafia na osobną listę do ręcznego sprawdzenia — zamiast być cicho pomijany
 - Kolejka wielu plików jednocześnie w GUI, każdy plik z własną, niezależną numeracją etykiet
 - Osobna funkcja "Konwertuj do PDF" (DOC/DOCX → PDF), niezależna od anonimizacji
-- Opcjonalny tryb date-shifting: przesunięcie wszystkich dat w dokumencie o ten sam losowy offset — zachowuje odstępy między zdarzeniami (czytelne terminy/przedawnienia), a jednocześnie ukrywa rzeczywiste daty
+- Opcjonalny tryb date-shifting: przesunięcie wszystkich dat w dokumencie o ten sam losowy offset, zawsze wielokrotność 7 dni (konwencja stosowana w de-identyfikacji medycznej, np. PhysioNet) — zachowuje zarówno odstępy między zdarzeniami, jak i dzień tygodnia, a jednocześnie ukrywa rzeczywiste daty
+- Ekran weryfikacji pokazuje osobno "niepewne trafienia" — dane wykryte tylko dzięki tolerancji na typowe pomyłki OCR (a nie wprost, ze zgodnym checksumem), oznaczone jako wymagające ręcznego sprawdzenia w oryginale, zamiast po cichu trafić do wyniku jako pewne
+- Ostrzeżenie o ryzyku małej próby (k-anonimowości): gdy dokument zostawia widoczne daty razem z kategorią, która w danym pliku występuje tylko raz (np. jeden adres), aplikacja ostrzega, że kombinacja tych dwóch pozostawionych informacji może pośrednio identyfikować osobę mimo formalnej anonimizacji
+- Klucze wewnętrznego rejestru tożsamości (mapowanie wartość → numer etykiety) są solonym hashem (HMAC-SHA256, sól losowana na nowo dla każdego dokumentu), nie surową wartością — nawet w zrzucie pamięci procesu nie da się bezpośrednio odczytać oryginalnych danych z klucza
 - Wykrywanie i usuwanie ochrony edycji dokumentu (`w:documentProtection`) w pliku wynikowym
 - Obowiązkowy re-skan "leak" całego wygenerowanego pliku przed zapisem — blokada zapisu, jeśli jakikolwiek zwalidowany identyfikator (PESEL, NIP, IBAN, itd.) przetrwał w dowolnej części pakietu `.docx`
 - Czyszczenie metadanych dokumentu (`docProps`, autor, nazwa pliku wyjściowa) tak, by sam plik wynikowy też nie ujawniał danych osobowych
@@ -271,7 +274,7 @@ i jej biblioteki współdzielone (`liblept`, `libpng`, `libjpeg` itd., poza
 podstawowymi bibliotekami systemowymi typu `glibc`, świadomie niebundlowanymi)
 są rozwiązywane i wynoszone ręcznie przez `ldd` przed uruchomieniem
 `pyinstaller build/anonimizator.spec`. Wynik jest pakowany jako
-`AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz` (artefakt workflow
+`AnonimizatorDokumentow-portable-linux-0.3.0.tar.gz` (artefakt workflow
 `anonimizator-pism-linux-portable`), bez odpowiednika instalatora Windows —
 patrz sekcja instalacji wyżej.
 

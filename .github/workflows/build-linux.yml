@@ -108,7 +108,7 @@ jobs:
 
       - name: Spakuj wersje portable (tar.gz katalogu one-dir)
         run: |
-          tar -czf AnonimizatorDokumentow-portable-linux-0.2.0.tar.gz -C dist AnonimizatorPism
+          tar -czf AnonimizatorDokumentow-portable-linux-0.3.0.tar.gz -C dist AnonimizatorPism
 
       - name: Publikuj wersje portable bezposrednio do GitHub Release
         # Patrz komentarz w build-windows.yml - to samo uzasadnienie:
@@ -117,7 +117,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          version="0.2.0"
+          version="0.3.0"
           tag="v$version"
           if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release upload "$tag" "AnonimizatorDokumentow-portable-linux-$version.tar.gz" --repo "${{ github.repository }}" --clobber

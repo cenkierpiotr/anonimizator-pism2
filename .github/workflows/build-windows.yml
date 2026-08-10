@@ -130,7 +130,7 @@ jobs:
         # spakowany jako ZIP dla osob ktore wola rozpakowac i uruchomic
         # bez instalacji/uprawnien administratora zamiast Inno Setup.
         run: |
-          Compress-Archive -Path "dist/AnonimizatorPism" -DestinationPath "AnonimizatorDokumentow-portable-0.2.0.zip"
+          Compress-Archive -Path "dist/AnonimizatorPism" -DestinationPath "AnonimizatorDokumentow-portable-0.3.0.zip"
 
       - name: Zainstaluj Inno Setup (Chocolatey)
         run: |
@@ -150,13 +150,13 @@ jobs:
         # sie realnie w tym repo). GitHub Release assets to zupelnie inny,
         # znacznie wiekszy limit (do 2GB/plik) - wgrywamy tam wprost z joba,
         # pomijajac Actions storage w ogole. Wymaga, zeby tag wersji (np.
-        # v0.2.0) i odpowiadajacy mu Release juz istnialy (tworzone recznie
+        # v0.3.0) i odpowiadajacy mu Release juz istnialy (tworzone recznie
         # przy wydaniu) - jesli nie istnieja, krok jest pomijany bez bledu,
         # zeby zwykly build z push do main (bez tagu) dalej przechodzil.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = "0.2.0"
+          $version = "0.3.0"
           $tag = "v$version"
           gh release view $tag --repo ${{ github.repository }} *> $null
           if ($LASTEXITCODE -eq 0) {

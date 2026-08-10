@@ -20,7 +20,7 @@
 ; akceptowalne wobec priorytetu "zero tarcia przy instalacji".
 
 #define MyAppName "Anonimizator Pism"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.3.0"
 ; TODO: podmienic na docelowego wydawce/firme przed pierwszym wydaniem.
 #define MyAppPublisher "Wydawca aplikacji (uzupelnij)"
 #define MyAppURL "https://github.com/cenkierpiotr/anonimizator-pism"
