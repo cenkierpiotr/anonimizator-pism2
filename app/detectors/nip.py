@@ -19,4 +19,4 @@ def is_valid_nip(value: str) -> bool:
     return checksum == digits[9]
 
 
-detector = Detector(name="nip", pattern=_PATTERN, validate=is_valid_nip)
+detector = Detector(name="nip", pattern=_PATTERN, validate=is_valid_nip, ocr_tolerant=True)

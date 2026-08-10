@@ -1,3 +1,4 @@
+from app.config import AppConfig
 from app.pipeline.identity_cluster import IdentityRegistry
 
 
@@ -51,3 +52,43 @@ def test_registries_are_independent_across_documents():
     registry_a.label_for("phone", "601234567")
     label_b = registry_b.label_for("phone", "999888777")
     assert label_b == "[numer telefonu 1]"
+
+
+def test_assigned_keys_are_hashed_not_raw_canonical_value():
+    registry = IdentityRegistry()
+    registry.label_for("phone", "601234567")
+    # Klucze rejestru muszą być HMAC-ami (hex sha256 = 64 znaki), nie surową
+    # skanonikalizowaną wartością - patrz uzasadnienie w identity_cluster.py.
+    assert list(registry._assigned.keys()) == [registry._hashed_key("phone", "601234567")]
+    assert "601234567" not in registry._assigned
+
+
+def test_different_documents_get_different_salts():
+    registry_a = IdentityRegistry()
+    registry_b = IdentityRegistry()
+    assert registry_a._salt != registry_b._salt
+
+
+def test_date_shift_offset_is_multiple_of_seven_when_enabled():
+    config = AppConfig(date_shifting_enabled=True)
+    for _ in range(20):
+        registry = IdentityRegistry(config)
+        assert registry.date_shift_offset_days % 7 == 0
+
+
+def test_date_shift_offset_zero_when_disabled():
+    registry = IdentityRegistry(AppConfig(date_shifting_enabled=False))
+    assert registry.date_shift_offset_days == 0
+
+
+def test_apply_operator_shifts_date_when_enabled():
+    config = AppConfig(date_shifting_enabled=True)
+    registry = IdentityRegistry(config)
+    registry.date_shift_offset_days = 7
+    shifted = registry.apply_operator("date", "01.01.2026")
+    assert shifted == "08.01.2026"
+
+
+def test_apply_operator_leaves_date_when_shifting_disabled():
+    registry = IdentityRegistry()
+    assert registry.apply_operator("date", "01.01.2026") is None

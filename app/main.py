@@ -27,6 +27,7 @@ from app.pipeline.detect_all import Replacement, detect_in_text
 from app.pipeline.format_detect import DocumentFormat, UnsupportedDocumentError, detect_format
 from app.pipeline.identity_cluster import IdentityRegistry
 from app.pipeline.leak_check import LeakDetectedError, LeakFinding, check_docx
+from app.pipeline import small_cell_risk
 from app.pipeline.temp_hygiene import STAGING_DIR_PREFIX
 
 _LANGUAGE_SAMPLE_CHAR_LIMIT = 5000
@@ -82,6 +83,7 @@ class StagedAnonymization:
     registry: IdentityRegistry
     potentially_missed: list[str] = field(default_factory=list)
     leak_findings: list[LeakFinding] = field(default_factory=list)
+    uncertain_detections: list[str] = field(default_factory=list)
 
     @property
     def entity_count(self) -> int:
@@ -120,12 +122,17 @@ def _detect_fn_for(
     nlp,
     sample_texts: list[str] | None = None,
     potentially_missed: list[str] | None = None,
+    uncertain_detections: list[str] | None = None,
 ) -> Callable[[str], list[tuple[int, int, str]]]:
     def _detect_fn(text: str) -> list[tuple[int, int, str]]:
         if sample_texts is not None and text:
             sample_texts.append(text)
         replacements: list[Replacement] = detect_in_text(
-            text, registry, nlp=nlp, potentially_missed_collector=potentially_missed
+            text,
+            registry,
+            nlp=nlp,
+            potentially_missed_collector=potentially_missed,
+            uncertain_collector=uncertain_detections,
         )
         return [(r.start, r.end, r.label) for r in replacements]
 
@@ -192,7 +199,8 @@ def process_to_staging(
     registry = IdentityRegistry(options.config)
     sample_texts: list[str] = []
     potentially_missed: list[str] = []
-    detect_fn = _detect_fn_for(registry, options.nlp, sample_texts, potentially_missed)
+    uncertain_detections: list[str] = []
+    detect_fn = _detect_fn_for(registry, options.nlp, sample_texts, potentially_missed, uncertain_detections)
 
     staging_dir = Path(tempfile.mkdtemp(prefix=STAGING_DIR_PREFIX))
     try:
@@ -299,6 +307,8 @@ def process_to_staging(
             seen_snippets.add(key)
             deduped_missed.append(snippet)
 
+        warnings.extend(small_cell_risk.check(registry, options.config or AppConfig()))
+
         return StagedAnonymization(
             input_path=input_path,
             format=detection.format,
@@ -308,6 +318,7 @@ def process_to_staging(
             registry=registry,
             potentially_missed=deduped_missed,
             leak_findings=leak_findings,
+            uncertain_detections=uncertain_detections,
         )
     except Exception:
         shutil.rmtree(staging_dir, ignore_errors=True)

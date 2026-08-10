@@ -22,6 +22,14 @@ class Detection:
     value: str
     priority: int
     nestable: bool = False
+    # Pewność detekcji w [0, 1] - domyślnie 1.0 (detektory checksumowe/regex o
+    # wysokiej precyzji). Obniżana np. przez tolerancję na pomyłki OCR (patrz
+    # `app/detectors/ocr_tolerance.py`) i modyfikowana przez wzmocnienie
+    # kontekstowe (`app/pipeline/context_score.py`) - nie wpływa na `resolve()`
+    # (który nadal rozstrzyga po `priority`), tylko przenosi się do audytu
+    # (`detect_all.Replacement`) i decyduje, czy trafienie jest "pewne" czy
+    # "niepewne" na ekranie weryfikacji.
+    score: float = 1.0
 
 
 def _overlaps(a: Detection, b: Detection) -> bool:

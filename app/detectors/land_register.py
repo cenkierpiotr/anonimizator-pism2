@@ -37,4 +37,4 @@ def is_valid_kw(value: str) -> bool:
     return checksum == int(check)
 
 
-detector = Detector(name="land_register", pattern=_PATTERN, validate=is_valid_kw)
+detector = Detector(name="land_register", pattern=_PATTERN, validate=is_valid_kw, ocr_tolerant=True)

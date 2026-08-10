@@ -40,5 +40,5 @@ def is_valid_plate(value: str) -> bool:
     return bool(value) and 5 <= len(value.replace(" ", "")) <= 8
 
 
-detector = Detector(name="vehicle_vin", pattern=_VIN_PATTERN, validate=is_valid_vin)
+detector = Detector(name="vehicle_vin", pattern=_VIN_PATTERN, validate=is_valid_vin, ocr_tolerant=True)
 plate_detector = Detector(name="vehicle_plate", pattern=_PLATE_PATTERN, validate=is_valid_plate)

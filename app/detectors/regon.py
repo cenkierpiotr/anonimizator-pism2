@@ -29,4 +29,4 @@ def is_valid_regon(value: str) -> bool:
     return False
 
 
-detector = Detector(name="regon", pattern=_PATTERN, validate=is_valid_regon)
+detector = Detector(name="regon", pattern=_PATTERN, validate=is_valid_regon, ocr_tolerant=True)

@@ -17,4 +17,4 @@ def is_valid_pesel(value: str) -> bool:
     return control == digits[10]
 
 
-detector = Detector(name="pesel", pattern=_PATTERN, validate=is_valid_pesel)
+detector = Detector(name="pesel", pattern=_PATTERN, validate=is_valid_pesel, ocr_tolerant=True)

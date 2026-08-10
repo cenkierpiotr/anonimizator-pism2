@@ -38,7 +38,7 @@ def is_valid_iban(value: str) -> bool:
     return _mod97_ok(compact)
 
 
-detector = Detector(name="iban", pattern=_PATTERN, validate=is_valid_iban)
+detector = Detector(name="iban", pattern=_PATTERN, validate=is_valid_iban, ocr_tolerant=True)
 
 # Fallback: ten sam wzorzec, ale BEZ walidacji checksumem — łapie numery kont
 # z błędem OCR/typo, które nie przechodzą mod 97, ale kształtem są jednoznacznie

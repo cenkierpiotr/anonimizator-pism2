@@ -36,7 +36,8 @@ from app.detectors import pesel
 from app.detectors import phone
 from app.detectors import regon
 from app.detectors import vehicle
-from app.pipeline import date_shift, ner
+from app.pipeline import ner
+from app.pipeline.context_score import context_boost
 from app.pipeline.identity_cluster import IdentityRegistry
 from app.pipeline.merge import Detection, collapse_for_replacement, resolve
 
@@ -133,18 +134,29 @@ def find_potentially_missed(text: str, resolved: list[Detection]) -> list[str]:
 
 @dataclass(frozen=True)
 class Replacement:
-    """Gotowa podmiana do zastosowania przez writer: [start, end) -> label."""
+    """Gotowa podmiana do zastosowania przez writer: [start, end) -> label.
+
+    `category`/`score` (punkt 7c planu - AnalyzerResult/OperatorResult jako
+    niemutowalny rekord z audytem): pozwalają odtworzyć POCZĄTKI decyzji
+    (co wykryto, z jaką pewnością) obok samego skutku (etykieta), bez
+    przechowywania nigdzie oryginalnej wartości - `label` już jest bezpieczną
+    formą do wyświetlenia. Wykorzystywane przez ekran weryfikacji do
+    odróżnienia trafień "pewnych" od "niepewnych" (patrz `score` w
+    `merge.Detection`)."""
 
     start: int
     end: int
     label: str
+    category: str = ""
+    score: float = 1.0
 
 
 def _from_detector(detector, text, category, priority, nestable=False) -> list[Detection]:
-    return [
-        Detection(m.start, m.end, category, m.value, priority, nestable)
-        for m in detector.find_all(text)
-    ]
+    detections = []
+    for m in detector.find_all(text):
+        score = context_boost(text, m.start, m.end, category, m.score) if m.score < 1.0 else m.score
+        detections.append(Detection(m.start, m.end, category, m.value, priority, nestable, score))
+    return detections
 
 
 def _literal_rescan(text: str, known_names: set[str], existing_spans: set[tuple[int, int]]) -> list[Detection]:
@@ -177,6 +189,7 @@ def detect_in_text(
     registry: IdentityRegistry,
     nlp=None,
     potentially_missed_collector: list[str] | None = None,
+    uncertain_collector: list[str] | None = None,
 ) -> list[Replacement]:
     """Uruchamia wszystkie warstwy detekcji na pojedynczym bloku tekstu i zwraca
     listę podmian po scaleniu nakładających się span-ów i przydzieleniu etykiet
@@ -251,15 +264,17 @@ def detect_in_text(
 
     replacements: list[Replacement] = []
     for d in collapse_for_replacement(resolved):
-        if d.category == "date" and registry.date_shifting_enabled:
-            shifted = date_shift.shift_date_string(d.value, registry.date_shift_offset_days)
-            if shifted != d.value:
-                replacements.append(Replacement(d.start, d.end, shifted))
-            continue
-        label = registry.label_for(d.category, d.value)
+        label = registry.apply_operator(d.category, d.value)
         if label is None:
             continue
-        replacements.append(Replacement(d.start, d.end, label))
+        replacements.append(
+            Replacement(d.start, d.end, label, category=d.category, score=d.score)
+        )
+        if uncertain_collector is not None and d.score < 1.0:
+            uncertain_collector.append(
+                f"{label} — dopasowanie tylko po korekcie typowych pomyłek OCR "
+                f"(pewność {d.score:.0%}), sprawdź ręcznie w oryginale."
+            )
     return replacements
 
 

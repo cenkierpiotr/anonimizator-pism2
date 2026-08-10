@@ -31,5 +31,5 @@ def is_valid_passport(value: str) -> bool:
     return len(value) == 9 and value[:2].isalpha() and value[2:].isdigit()
 
 
-detector = Detector(name="id_card", pattern=_ID_CARD_PATTERN, validate=is_valid_id_card)
+detector = Detector(name="id_card", pattern=_ID_CARD_PATTERN, validate=is_valid_id_card, ocr_tolerant=True)
 passport_detector = Detector(name="passport", pattern=_PASSPORT_PATTERN, validate=is_valid_passport)
