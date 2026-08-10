@@ -9,6 +9,7 @@ w pełnym IBAN-ie po `PL`, więc walidacja to ten sam checksum na `"PL" + NRB`.
 
 from __future__ import annotations
 
+from app.detectors import ocr_tolerance
 from app.detectors.base import Detector
 
 _PATTERN = (
@@ -16,6 +17,14 @@ _PATTERN = (
     r"[A-Z]{2}\d{2}(?:[ ]?\d{4}){2,7}"  # pełny IBAN z prefiksem kraju
     r"|\d{2}(?:[ ]?\d{4}){6}"  # polski NRB bez prefiksu (26 cyfr)
     r")(?![A-Za-z0-9])"
+)
+
+_D = ocr_tolerance.FUZZY_DIGIT_CLASS
+_FUZZY_PATTERN = (
+    rf"(?<![A-Za-z0-9])(?P<value>"
+    rf"[A-Z]{{2}}{_D}{{2}}(?:[ ]?{_D}{{4}}){{2,7}}"
+    rf"|{_D}{{2}}(?:[ ]?{_D}{{4}}){{6}}"
+    rf")(?![A-Za-z0-9])"
 )
 
 
@@ -38,7 +47,13 @@ def is_valid_iban(value: str) -> bool:
     return _mod97_ok(compact)
 
 
-detector = Detector(name="iban", pattern=_PATTERN, validate=is_valid_iban, ocr_tolerant=True)
+detector = Detector(
+    name="iban",
+    pattern=_PATTERN,
+    validate=is_valid_iban,
+    ocr_tolerant=True,
+    fuzzy_pattern=_FUZZY_PATTERN,
+)
 
 # Fallback: ten sam wzorzec, ale BEZ walidacji checksumem — łapie numery kont
 # z błędem OCR/typo, które nie przechodzą mod 97, ale kształtem są jednoznacznie

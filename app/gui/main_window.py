@@ -533,6 +533,25 @@ class ReviewWindow(ctk.CTkToplevel):
                     missed_frame, text=f"• ...{snippet}...", anchor="w", wraplength=760, justify="left"
                 ).pack(anchor="w", padx=16, pady=2)
 
+        if staged.uncertain_detections:
+            uncertain_frame = ctk.CTkFrame(self)
+            uncertain_frame.pack(side="top", fill="x", padx=14, pady=4)
+            ctk.CTkLabel(
+                uncertain_frame,
+                text=(
+                    "Niepewne trafienia (rozpoznane tylko po korekcie typowych "
+                    "pomyłek OCR - sprawdź ręcznie w oryginale):"
+                ),
+                font=ctk.CTkFont(weight="bold"),
+                anchor="w",
+                wraplength=760,
+                justify="left",
+            ).pack(anchor="w", padx=8, pady=(6, 0))
+            for note in staged.uncertain_detections[:20]:
+                ctk.CTkLabel(
+                    uncertain_frame, text=f"• {note}", anchor="w", wraplength=760, justify="left"
+                ).pack(anchor="w", padx=16, pady=2)
+
         self.leak_ack_var: ctk.BooleanVar | None = None
         if staged.leak_findings:
             leak_frame = ctk.CTkFrame(self, fg_color="#7a1f1f")

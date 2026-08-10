@@ -11,6 +11,13 @@ from __future__ import annotations
 
 from app.detectors.base import Detector
 
+# VIN wyklucza I/O/Q z definicji (patrz `is_valid_vin`), więc ścisły wzorzec
+# `_VIN_PATTERN` też je wyklucza - ale to znaczy, że gdy OCR podstawi "O" w
+# miejsce "0" (typowa pomyłka), dopasowanie w ogóle nie powstanie. Rozmyty
+# wzorzec dopuszcza pełny alfanumeryczny zestaw, a właściwą korektę robi
+# `ocr_tolerance.validates_with_ocr_correction` (patrz `Detector.find_all`).
+_VIN_FUZZY_PATTERN = r"\b(?P<value>[A-Z0-9]{17})\b"
+
 _VIN_TRANSLIT = {
     "A": 1, "B": 2, "C": 3, "D": 4, "E": 5, "F": 6, "G": 7, "H": 8,
     "J": 1, "K": 2, "L": 3, "M": 4, "N": 5, "P": 7, "R": 9,
@@ -40,5 +47,11 @@ def is_valid_plate(value: str) -> bool:
     return bool(value) and 5 <= len(value.replace(" ", "")) <= 8
 
 
-detector = Detector(name="vehicle_vin", pattern=_VIN_PATTERN, validate=is_valid_vin, ocr_tolerant=True)
+detector = Detector(
+    name="vehicle_vin",
+    pattern=_VIN_PATTERN,
+    validate=is_valid_vin,
+    ocr_tolerant=True,
+    fuzzy_pattern=_VIN_FUZZY_PATTERN,
+)
 plate_detector = Detector(name="vehicle_plate", pattern=_PLATE_PATTERN, validate=is_valid_plate)

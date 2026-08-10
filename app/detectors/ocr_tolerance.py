@@ -31,6 +31,14 @@ _CONFUSABLES: dict[str, tuple[str, ...]] = {
 
 _MAX_SUBSTITUTIONS = 2
 
+# Klasa znaków do budowania "rozmytych" wzorców regex w detektorach z
+# `ocr_tolerant=True` - patrz `Detector.fuzzy_pattern` w `base.py`. Bez tego
+# regex czysto cyfrowy (np. `\d{11}` dla PESEL) w ogóle nie dopasuje kandydata,
+# jeśli OCR podstawił literę w miejscu cyfry (np. "8O1231O1234") - checksum
+# tolerancyjny (wyżej w tym module) nigdy nie dostaje szansy zadziałać, bo nie
+# ma nawet surowego dopasowania do sprawdzenia.
+FUZZY_DIGIT_CLASS = "[0-9OoIiLlSsBbZz]"
+
 
 def generate_variants(value: str) -> list[str]:
     """Zwraca warianty `value` z podstawionymi znakami-myłkami OCR (bez

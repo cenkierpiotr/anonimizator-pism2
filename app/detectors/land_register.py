@@ -12,9 +12,12 @@ fałszywych trafień, nie jako formalną walidację prawną.
 
 from __future__ import annotations
 
+from app.detectors import ocr_tolerance
 from app.detectors.base import Detector
 
 _PATTERN = r"\b(?P<value>[A-Z0-9]{4}/\d{8}/\d)\b"
+_D = ocr_tolerance.FUZZY_DIGIT_CLASS
+_FUZZY_PATTERN = rf"\b(?P<value>[A-Z0-9]{{4}}/{_D}{{8}}/{_D})\b"
 
 _WEIGHTS_CYCLE = (1, 3, 7)
 
@@ -37,4 +40,10 @@ def is_valid_kw(value: str) -> bool:
     return checksum == int(check)
 
 
-detector = Detector(name="land_register", pattern=_PATTERN, validate=is_valid_kw, ocr_tolerant=True)
+detector = Detector(
+    name="land_register",
+    pattern=_PATTERN,
+    validate=is_valid_kw,
+    ocr_tolerant=True,
+    fuzzy_pattern=_FUZZY_PATTERN,
+)

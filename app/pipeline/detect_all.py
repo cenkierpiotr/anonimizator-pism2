@@ -272,7 +272,7 @@ def detect_in_text(
         )
         if uncertain_collector is not None and d.score < 1.0:
             uncertain_collector.append(
-                f"{label} — dopasowanie tylko po korekcie typowych pomyłek OCR "
+                f"{label} - dopasowanie tylko po korekcie typowych pomyłek OCR "
                 f"(pewność {d.score:.0%}), sprawdź ręcznie w oryginale."
             )
     return replacements

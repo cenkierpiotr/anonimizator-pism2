@@ -41,12 +41,22 @@ class Detector:
     weryfikacji jako "niepewne" zamiast zniknąć bez śladu (patrz plan,
     ryzyko "PESEL odczytany przez OCR jako '8O1231O1234' nie przejdzie
     checksumu i cicho nie zostanie zanonimizowany").
+
+    `fuzzy_pattern` (tylko z `ocr_tolerant=True`): wzorzec-bliźniak `pattern`,
+    w którym pozycje cyfrowe (`\\d`) są zastąpione klasą znaków tolerującą
+    typowe pomyłki OCR (`ocr_tolerance.FUZZY_DIGIT_CLASS`). Jest potrzebny,
+    bo samo podstawienie znaków w `ocr_tolerance.validates_with_ocr_correction`
+    działa dopiero NA JUŻ ZNALEZIONYM dopasowaniu - a ściśle cyfrowy `pattern`
+    (np. `\\d{11}` dla PESEL) w ogóle nie dopasuje tekstu, w którym OCR
+    podstawił literę w miejscu cyfry, więc bez osobnego, "rozmytego" przebiegu
+    dopasowania takie przypadki nigdy nie trafiają nawet do walidacji.
     """
 
     name: str
     pattern: re.Pattern[str]
     validate: Callable[[str], bool] | None
     ocr_tolerant: bool
+    fuzzy_pattern: re.Pattern[str] | None
 
     def __init__(
         self,
@@ -54,19 +64,39 @@ class Detector:
         pattern: str | re.Pattern[str],
         validate: Callable[[str], bool] | None = None,
         ocr_tolerant: bool = False,
+        fuzzy_pattern: str | re.Pattern[str] | None = None,
     ):
         self.name = name
         self.pattern = pattern if isinstance(pattern, re.Pattern) else re.compile(pattern)
         self.validate = validate
         self.ocr_tolerant = ocr_tolerant
+        self.fuzzy_pattern = (
+            None
+            if fuzzy_pattern is None
+            else fuzzy_pattern
+            if isinstance(fuzzy_pattern, re.Pattern)
+            else re.compile(fuzzy_pattern)
+        )
 
     def find_all(self, text: str) -> list[Match]:
         results: list[Match] = []
+        strict_spans: set[tuple[int, int]] = set()
         for m in self.pattern.finditer(text):
             value = m.group("value") if "value" in m.groupdict() else m.group(0)
+            span = (m.start(), m.end())
             if self.validate is None or self.validate(value):
                 results.append(Match(start=m.start(), end=m.end(), value=value))
+                strict_spans.add(span)
                 continue
             if self.ocr_tolerant and ocr_tolerance.validates_with_ocr_correction(value, self.validate):
                 results.append(Match(start=m.start(), end=m.end(), value=value, score=_OCR_CORRECTED_SCORE))
+                strict_spans.add(span)
+        if self.ocr_tolerant and self.fuzzy_pattern is not None and self.validate is not None:
+            for m in self.fuzzy_pattern.finditer(text):
+                span = (m.start(), m.end())
+                if span in strict_spans:
+                    continue
+                value = m.group("value") if "value" in m.groupdict() else m.group(0)
+                if ocr_tolerance.validates_with_ocr_correction(value, self.validate):
+                    results.append(Match(start=m.start(), end=m.end(), value=value, score=_OCR_CORRECTED_SCORE))
         return results

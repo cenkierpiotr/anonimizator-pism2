@@ -11,10 +11,13 @@ udokumentowanego, prostego algorytmu kontrolnego).
 
 from __future__ import annotations
 
+from app.detectors import ocr_tolerance
 from app.detectors.base import Detector
 
 _ID_CARD_PATTERN = r"\b(?P<value>[A-Z]{3}\d{6})\b"
 _PASSPORT_PATTERN = r"\b(?P<value>[A-Z]{2}\d{7})\b"
+_D = ocr_tolerance.FUZZY_DIGIT_CLASS
+_ID_CARD_FUZZY_PATTERN = rf"\b(?P<value>[A-Z]{{3}}{_D}{{6}})\b"
 
 _ID_WEIGHTS = (7, 3, 1, 0, 7, 3, 1, 7, 3)
 
@@ -31,5 +34,11 @@ def is_valid_passport(value: str) -> bool:
     return len(value) == 9 and value[:2].isalpha() and value[2:].isdigit()
 
 
-detector = Detector(name="id_card", pattern=_ID_CARD_PATTERN, validate=is_valid_id_card, ocr_tolerant=True)
+detector = Detector(
+    name="id_card",
+    pattern=_ID_CARD_PATTERN,
+    validate=is_valid_id_card,
+    ocr_tolerant=True,
+    fuzzy_pattern=_ID_CARD_FUZZY_PATTERN,
+)
 passport_detector = Detector(name="passport", pattern=_PASSPORT_PATTERN, validate=is_valid_passport)

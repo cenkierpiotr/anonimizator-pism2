@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from app.detectors import ocr_tolerance
 from app.detectors.base import Detector
 
 _WEIGHTS_9 = (8, 9, 2, 3, 4, 5, 6, 7)
 _WEIGHTS_14 = (2, 4, 8, 5, 0, 9, 7, 3, 6, 1, 2, 4, 8)
 _PATTERN = r"(?<!\d)(?P<value>\d{9}|\d{14})(?!\d)"
+_D = ocr_tolerance.FUZZY_DIGIT_CLASS
+_FUZZY_PATTERN = rf"(?<!{_D})(?P<value>{_D}{{9}}|{_D}{{14}})(?!{_D})"
 
 
 def _checksum(digits: list[int], weights: tuple[int, ...]) -> int:
@@ -29,4 +32,10 @@ def is_valid_regon(value: str) -> bool:
     return False
 
 
-detector = Detector(name="regon", pattern=_PATTERN, validate=is_valid_regon, ocr_tolerant=True)
+detector = Detector(
+    name="regon",
+    pattern=_PATTERN,
+    validate=is_valid_regon,
+    ocr_tolerant=True,
+    fuzzy_pattern=_FUZZY_PATTERN,
+)

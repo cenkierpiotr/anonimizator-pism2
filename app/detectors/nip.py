@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+from app.detectors import ocr_tolerance
 from app.detectors.base import Detector
 
 _WEIGHTS = (6, 5, 7, 2, 3, 4, 5, 6, 7)
 _PATTERN = r"(?<!\d)(?P<value>\d{3}-?\d{3}-?\d{2}-?\d{2}|\d{3}-\d{2}-\d{2}-\d{3})(?!\d)"
+_D = ocr_tolerance.FUZZY_DIGIT_CLASS
+_FUZZY_PATTERN = (
+    rf"(?<!{_D})(?P<value>{_D}{{3}}-?{_D}{{3}}-?{_D}{{2}}-?{_D}{{2}}"
+    rf"|{_D}{{3}}-{_D}{{2}}-{_D}{{2}}-{_D}{{3}})(?!{_D})"
+)
 
 
 def is_valid_nip(value: str) -> bool:
@@ -19,4 +25,10 @@ def is_valid_nip(value: str) -> bool:
     return checksum == digits[9]
 
 
-detector = Detector(name="nip", pattern=_PATTERN, validate=is_valid_nip, ocr_tolerant=True)
+detector = Detector(
+    name="nip",
+    pattern=_PATTERN,
+    validate=is_valid_nip,
+    ocr_tolerant=True,
+    fuzzy_pattern=_FUZZY_PATTERN,
+)
