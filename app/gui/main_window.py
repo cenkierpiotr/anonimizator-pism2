@@ -32,6 +32,7 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
+from app.gui import theme
 from app.main import (
     AnonymizeOptions,
     PasswordRequiredError,
@@ -47,7 +48,7 @@ from app.pipeline.leak_check import LeakDetectedError
 from app.pipeline.metadata_scrub import neutral_output_filename
 from app.pipeline.temp_hygiene import cleanup_stale_staging_dirs
 
-ctk.set_appearance_mode("system")
+ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
 
@@ -195,80 +196,223 @@ class AnonymizerApp(ctk.CTk):
     # -- layout -------------------------------------------------------
 
     def _build_layout(self) -> None:
-        toolbar = ctk.CTkFrame(self)
-        toolbar.pack(side="top", fill="x", padx=10, pady=(10, 5))
+        self.configure(fg_color=theme.NEUTRAL_LIGHT)
 
-        ctk.CTkButton(toolbar, text="Dodaj pliki...", command=self._on_add_files).pack(
-            side="left", padx=(0, 8)
+        header = ctk.CTkFrame(self, fg_color="white", corner_radius=0, height=64)
+        header.pack(side="top", fill="x")
+        header.pack_propagate(False)
+
+        logo = ctk.CTkLabel(
+            header,
+            text="AD",
+            width=36,
+            height=36,
+            corner_radius=10,
+            fg_color=theme.PRIMARY,
+            text_color="white",
+            font=ctk.CTkFont(family=theme.FONT_HEADLINE, size=14, weight="bold"),
         )
+        logo.pack(side="left", padx=(18, 10), pady=14)
+
+        title_box = ctk.CTkFrame(header, fg_color="transparent")
+        title_box.pack(side="left", pady=10)
+        ctk.CTkLabel(
+            title_box,
+            text="Anonimizator Dokumentów",
+            anchor="w",
+            text_color="#1F2A2A",
+            font=ctk.CTkFont(family=theme.FONT_HEADLINE, size=16, weight="bold"),
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            title_box,
+            text="Bezpieczne usuwanie danych osobowych z dokumentów",
+            anchor="w",
+            text_color=theme.TEXT_MUTED,
+            font=ctk.CTkFont(family=theme.FONT_BODY, size=11),
+        ).pack(anchor="w")
+
+        body = ctk.CTkFrame(self, fg_color=theme.NEUTRAL_LIGHT, corner_radius=0)
+        body.pack(side="top", fill="both", expand=True)
+
+        toolbar = ctk.CTkFrame(body, fg_color="transparent")
+        toolbar.pack(side="top", fill="x", padx=16, pady=(14, 6))
+
         ctk.CTkButton(
-            toolbar, text="Anonimizuj zaznaczone", command=self._on_start_anonymize
-        ).pack(side="left", padx=8)
+            toolbar,
+            text="Dodaj pliki...",
+            command=self._on_add_files,
+            corner_radius=theme.CORNER_RADIUS,
+            fg_color=theme.PRIMARY,
+            hover_color=theme.PRIMARY_DARK,
+            font=ctk.CTkFont(family=theme.FONT_BODY, size=12, weight="bold"),
+        ).pack(side="left", padx=(0, 8))
         ctk.CTkButton(
-            toolbar, text="Konwertuj do PDF", command=self._on_convert_to_pdf
+            toolbar,
+            text="Anonimizuj zaznaczone",
+            command=self._on_start_anonymize,
+            corner_radius=theme.CORNER_RADIUS,
+            fg_color=theme.PRIMARY,
+            hover_color=theme.PRIMARY_DARK,
+            font=ctk.CTkFont(family=theme.FONT_BODY, size=12, weight="bold"),
         ).pack(side="left", padx=8)
-        ctk.CTkButton(
-            toolbar, text="Zainstaluj obsługę .doc", command=self._on_install_libreoffice
+
+        self._secondary_button(
+            toolbar, "Konwertuj do PDF", self._on_convert_to_pdf
         ).pack(side="left", padx=8)
-        self.cancel_button = ctk.CTkButton(
-            toolbar, text="Anuluj", command=self._on_cancel, state="disabled"
-        )
+        self._secondary_button(
+            toolbar, "Zainstaluj obsługę .doc", self._on_install_libreoffice
+        ).pack(side="left", padx=8)
+        self.cancel_button = self._secondary_button(toolbar, "Anuluj", self._on_cancel)
+        self.cancel_button.configure(state="disabled")
         self.cancel_button.pack(side="left", padx=8)
-        ctk.CTkButton(
-            toolbar, text="Usuń zaznaczone z listy", command=self._on_remove_selected
+        self._secondary_button(
+            toolbar, "Usuń zaznaczone z listy", self._on_remove_selected, danger=True
         ).pack(side="right")
 
-        self.progress_bar = ctk.CTkProgressBar(self, mode="indeterminate")
-        self.progress_bar.pack(side="top", fill="x", padx=10, pady=(0, 5))
+        self.progress_bar = ctk.CTkProgressBar(
+            body, mode="indeterminate", corner_radius=4, progress_color=theme.PRIMARY
+        )
+        self.progress_bar.pack(side="top", fill="x", padx=16, pady=(4, 4))
         self.progress_bar.set(0)
 
-        self.status_label = ctk.CTkLabel(self, text="Gotowy.", anchor="w")
-        self.status_label.pack(side="top", fill="x", padx=12)
+        self.status_label = ctk.CTkLabel(
+            body,
+            text="Gotowy.",
+            anchor="w",
+            text_color=theme.TEXT_MUTED,
+            font=ctk.CTkFont(family=theme.FONT_BODY, size=11),
+        )
+        self.status_label.pack(side="top", fill="x", padx=18)
 
-        self.list_frame = ctk.CTkScrollableFrame(self, label_text="Kolejka plików")
-        self.list_frame.pack(side="top", fill="both", expand=True, padx=10, pady=10)
-        self.list_frame.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(
+            body,
+            text="Kolejka plików",
+            anchor="w",
+            text_color="#1F2A2A",
+            font=ctk.CTkFont(family=theme.FONT_HEADLINE, size=13, weight="bold"),
+        ).pack(side="top", fill="x", padx=18, pady=(14, 4))
+
+        self.list_frame = ctk.CTkScrollableFrame(
+            body, fg_color=theme.NEUTRAL_LIGHT, label_text=""
+        )
+        self.list_frame.pack(side="top", fill="both", expand=True, padx=14, pady=(0, 14))
+        self.list_frame.grid_columnconfigure(0, weight=1)
+
+        self.empty_state_label = ctk.CTkLabel(
+            self.list_frame,
+            text="Brak plików w kolejce - użyj \"Dodaj pliki...\" albo przeciągnij je tutaj.",
+            text_color=theme.TEXT_MUTED,
+            font=ctk.CTkFont(family=theme.FONT_BODY, size=12),
+        )
+        self.empty_state_label.grid(row=0, column=0, pady=40)
 
         self.row_widgets: dict[str, dict] = {}
+
+    def _secondary_button(
+        self, parent, text: str, command, *, danger: bool = False
+    ) -> ctk.CTkButton:
+        return ctk.CTkButton(
+            parent,
+            text=text,
+            command=command,
+            corner_radius=theme.CORNER_RADIUS,
+            fg_color="transparent",
+            border_width=1,
+            border_color=theme.DANGER if danger else theme.NEUTRAL_BORDER,
+            text_color=theme.DANGER if danger else "#1F2A2A",
+            hover_color=theme.DANGER_LIGHT if danger else theme.NEUTRAL_LIGHT,
+            font=ctk.CTkFont(family=theme.FONT_BODY, size=12),
+        )
 
     def _refresh_row(self, key: str) -> None:
         item = self.items[key]
         widgets = self.row_widgets[key]
         widgets["name_label"].configure(text=item.path.name)
-        widgets["status_label"].configure(text=item.status.value)
+        bg, fg, label = theme.status_badge_style(item.status.value)
+        widgets["status_badge"].configure(text=label, fg_color=bg, text_color=fg)
         if item.status == FileStatus.DO_WERYFIKACJI:
-            widgets["review_button"].configure(state="normal")
+            widgets["review_button"].configure(
+                state="normal", fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_DARK
+            )
         else:
-            widgets["review_button"].configure(state="disabled")
+            widgets["review_button"].configure(
+                state="disabled", fg_color=theme.NEUTRAL_BORDER, hover_color=theme.NEUTRAL_BORDER
+            )
 
     def _add_row(self, item: QueueItem) -> None:
         key = str(item.path)
         row = len(self.row_widgets)
         item.row_index = row
+        self.empty_state_label.grid_forget()
+
+        card = ctk.CTkFrame(
+            self.list_frame,
+            fg_color="white",
+            corner_radius=theme.CARD_CORNER_RADIUS,
+            border_width=1,
+            border_color=theme.NEUTRAL_BORDER,
+        )
+        card.grid(row=row, column=0, sticky="ew", padx=2, pady=4)
+        card.grid_columnconfigure(2, weight=1)
 
         check_var = ctk.BooleanVar(value=True)
-        checkbox = ctk.CTkCheckBox(self.list_frame, text="", variable=check_var, width=20)
-        checkbox.grid(row=row, column=0, padx=(4, 4), pady=3, sticky="w")
+        checkbox = ctk.CTkCheckBox(
+            card, text="", variable=check_var, width=20, fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_DARK
+        )
+        checkbox.grid(row=0, column=0, padx=(12, 8), pady=12, sticky="w")
 
-        name_label = ctk.CTkLabel(self.list_frame, text=item.path.name, anchor="w")
-        name_label.grid(row=row, column=1, padx=4, pady=3, sticky="ew")
+        type_color, type_label = theme.file_type_style(item.path.suffix)
+        type_chip = ctk.CTkLabel(
+            card,
+            text=type_label,
+            width=48,
+            corner_radius=6,
+            fg_color=type_color,
+            text_color="white",
+            font=ctk.CTkFont(family=theme.FONT_BODY, size=10, weight="bold"),
+        )
+        type_chip.grid(row=0, column=1, padx=(0, 10), pady=12)
 
-        status_label = ctk.CTkLabel(self.list_frame, text=item.status.value, anchor="w", width=140)
-        status_label.grid(row=row, column=2, padx=4, pady=3, sticky="w")
+        name_label = ctk.CTkLabel(
+            card,
+            text=item.path.name,
+            anchor="w",
+            text_color="#1F2A2A",
+            font=ctk.CTkFont(family=theme.FONT_BODY, size=12),
+        )
+        name_label.grid(row=0, column=2, padx=4, pady=12, sticky="ew")
+
+        bg, fg, label = theme.status_badge_style(item.status.value)
+        status_badge = ctk.CTkLabel(
+            card,
+            text=label,
+            corner_radius=999,
+            fg_color=bg,
+            text_color=fg,
+            width=120,
+            font=ctk.CTkFont(family=theme.FONT_BODY, size=11, weight="bold"),
+        )
+        status_badge.grid(row=0, column=3, padx=8, pady=12)
 
         review_button = ctk.CTkButton(
-            self.list_frame,
+            card,
             text="Podgląd / zapisz",
             width=130,
             state="disabled",
             command=lambda k=key: self._open_review(k),
+            corner_radius=theme.CORNER_RADIUS,
+            fg_color=theme.NEUTRAL_BORDER,
+            hover_color=theme.NEUTRAL_BORDER,
+            text_color_disabled=theme.TEXT_MUTED,
+            font=ctk.CTkFont(family=theme.FONT_BODY, size=11, weight="bold"),
         )
-        review_button.grid(row=row, column=3, padx=4, pady=3)
+        review_button.grid(row=0, column=4, padx=(4, 12), pady=12)
 
         self.row_widgets[key] = {
+            "card": card,
             "check_var": check_var,
             "name_label": name_label,
-            "status_label": status_label,
+            "status_badge": status_badge,
             "review_button": review_button,
         }
 
@@ -316,14 +460,14 @@ class AnonymizerApp(ctk.CTk):
     def _on_remove_selected(self) -> None:
         for key, widgets in list(self.row_widgets.items()):
             if widgets["check_var"].get():
-                for w in widgets.values():
-                    if hasattr(w, "destroy"):
-                        w.destroy()
+                widgets["card"].destroy()  # niszczy też wszystkie widgety-dzieci karty
                 del self.row_widgets[key]
                 staged = self.items[key].staged
                 if staged is not None:
                     discard_staged(staged)
                 del self.items[key]
+        if not self.row_widgets:
+            self.empty_state_label.grid(row=0, column=0, pady=40)
         self._relayout_rows()
 
     def _relayout_rows(self) -> None:
@@ -601,10 +745,23 @@ class ReviewWindow(ctk.CTkToplevel):
         button_row.pack(side="bottom", fill="x", padx=14, pady=14)
 
         ctk.CTkButton(
-            button_row, text="Odrzuć", fg_color="gray40", command=self._on_reject
+            button_row,
+            text="Odrzuć",
+            fg_color="transparent",
+            border_width=1,
+            border_color=theme.NEUTRAL_BORDER,
+            text_color="#1F2A2A",
+            hover_color=theme.NEUTRAL_LIGHT,
+            corner_radius=theme.CORNER_RADIUS,
+            command=self._on_reject,
         ).pack(side="left")
         ctk.CTkButton(
-            button_row, text="Zatwierdź i zapisz...", command=self._on_approve
+            button_row,
+            text="Zatwierdź i zapisz...",
+            fg_color=theme.PRIMARY,
+            hover_color=theme.PRIMARY_DARK,
+            corner_radius=theme.CORNER_RADIUS,
+            command=self._on_approve,
         ).pack(side="right")
 
         self.grab_set()  # modalne - decyzja o zapisie musi być świadoma i jednoznaczna
