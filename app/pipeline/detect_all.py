@@ -22,6 +22,7 @@ from app.detectors import civil_registry
 from app.detectors import dates
 from app.detectors import digital_ids
 from app.detectors import email
+from app.detectors import gazetteer_name
 from app.detectors import iban
 from app.detectors import id_card
 from app.detectors import inflect
@@ -50,6 +51,9 @@ _PRIORITY_LEGAL_ROLE = 70
 _PRIORITY_LITERAL_RESCAN = 65
 _PRIORITY_NER_PERSON = 60
 _PRIORITY_NER_ORG = 55
+# Niżej niż wszystko kontekstowe - to warstwa awaryjna, uruchamiana tylko gdy
+# NER w ogóle nie znalazł żadnej osoby w danym bloku (patrz gazetteer_name.py).
+_PRIORITY_GAZETTEER_NAME_FALLBACK = 35
 _PRIORITY_COMPANY = 58  # wzorzec formy prawnej — pełniejszy niż NER ORG
 _PRIORITY_ADDRESS_MEDIUM = 50
 _PRIORITY_INSTITUTION = 45
@@ -166,9 +170,17 @@ def _literal_rescan(text: str, known_names: set[str], existing_spans: set[tuple[
     detections: list[Detection] = []
     seen = set(existing_spans)
     for name in known_names:
+        # Uwaga: BEZ pomijania formy podstawowej (`form == name`) - dokładnie
+        # ta forma najczęściej powtarza się dosłownie w tabelach/nagłówkach/
+        # stopkach (np. komórka "Imię i nazwisko: Jan Kowalski"), gdzie NER
+        # zawodzi bo sąsiedni tekst komórek jest sklejany bez separatora
+        # (patrz `docx_writer._FLOW_CONTENT_PART_PREFIXES`) i psuje tokenizację.
+        # Pomijanie jej tu byłoby sprzeczne z celem tej funkcji opisanym wyżej
+        # - realny wyciek znaleziony testem e2e (nazwisko w komórce tabeli
+        # nieobjęte przez NER, bo sklejone z sąsiednim tekstem w jeden token).
+        # `seen`/`existing_spans` i tak eliminują duplikaty tam, gdzie NER już
+        # trafił tę samą formę.
         for form in inflect.generate_full_name_forms(name):
-            if form == name:
-                continue
             start = 0
             while True:
                 idx = text.find(form, start)
@@ -240,6 +252,17 @@ def detect_in_text(
         Detection(e.start, e.end, "legal_role_person", e.text, _PRIORITY_NER_PERSON)
         for e in person_entities
     ]
+    if not person_entities:
+        # NER nie znalazł ŻADNEJ osoby w tym bloku - uruchom awaryjną warstwę
+        # gazetteerową (patrz gazetteer_name.py), żeby nie polegać wyłącznie
+        # na statystycznym modelu w tekstach bez kontekstu zdaniowego (np.
+        # krótki nagłówek skanu OCR, wartość komórki tabeli). Celowo POMIJANA,
+        # gdy NER znalazł choć jedną osobę - w takich dokumentach dodatkowa
+        # warstwa tylko mnożyłaby fałszywe alarmy bez korzyści.
+        detections += [
+            Detection(m.start, m.end, "legal_role_person", m.value, _PRIORITY_GAZETTEER_NAME_FALLBACK, score=m.score)
+            for m in gazetteer_name.find_all(text)
+        ]
     detections += [
         Detection(e.start, e.end, "institution", e.text, _PRIORITY_NER_ORG, nestable=True)
         for e in org_entities

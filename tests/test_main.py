@@ -57,6 +57,40 @@ def test_anonymize_txt_end_to_end(sample_txt, tmp_path):
     assert "[PESEL 1]" in full_text
 
 
+def test_anonymize_docx_replaces_name_repeated_in_table_cell(tmp_path):
+    """Regresja: nazwisko rozpoznane przez NER w zdaniu musi też zniknąć z
+    komórki tabeli, gdzie występuje dosłownie (bez otaczającego zdania) -
+    znaleziony testem e2e na realistycznym piśmie z tabelą "Imię i nazwisko".
+    Tabele w .docx trafiają do TEGO SAMEGO tekstu part-u co akapity (sklejane
+    bez separatora - patrz `docx_writer._FLOW_CONTENT_PART_PREFIXES`), więc
+    NER gubi rozpoznanie w komórce (sąsiedni tekst zlepia się w jeden token),
+    a `detect_all._literal_rescan` wcześniej celowo pomijał formę podstawową
+    imienia+nazwiska (`if form == name: continue`), zakładając błędnie, że
+    NER już znalazł WSZYSTKIE jej wystąpienia."""
+    path = tmp_path / "wniosek_z_tabela.docx"
+    document = docx.Document()
+    document.add_paragraph(
+        "Wniosek dotyczy Pana/Pani Jan Kowalski, zamieszkałego pod adresem "
+        "Warszawa, legitymującego się numerem PESEL 44051401359."
+    )
+    table = document.add_table(rows=1, cols=2)
+    table.rows[0].cells[0].text = "Imię i nazwisko"
+    table.rows[0].cells[1].text = "Jan Kowalski"
+    document.save(path)
+
+    output = tmp_path / "out" / "wynik.docx"
+    anonymize_file(path, output)
+
+    result_doc = docx.Document(output)
+    full_text = "\n".join(p.text for p in result_doc.paragraphs)
+    for table_ in result_doc.tables:
+        for row in table_.rows:
+            for cell in row.cells:
+                full_text += "\n" + cell.text
+
+    assert "Jan Kowalski" not in full_text
+
+
 def test_anonymize_files_queue_continues_after_single_failure(sample_docx, tmp_path):
     bad_input = tmp_path / "nieznany.xyz"
     bad_input.write_bytes(b"\x00\x01garbage")
