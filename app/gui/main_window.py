@@ -160,6 +160,7 @@ class AnonymizerApp(ctk.CTk):
         self.active_thread: threading.Thread | None = None
         self.processing = False
         self.pending_keys: list[str] = []
+        self.batch_total = 0
 
         self._build_layout()
         self._setup_drag_and_drop()
@@ -487,6 +488,12 @@ class AnonymizerApp(ctk.CTk):
             return
         self.cancel_event = threading.Event()
         self.pending_keys = keys
+        # Zapamiętujemy rozmiar całej partii, żeby w statusie pokazywać
+        # "X z Y" - bez tego przy kolejce wieloplikowej użytkownik widział
+        # tylko nazwę aktualnie przetwarzanego pliku i nie miał żadnego
+        # wskaźnika, ile jeszcze zostało (brak poczucia postępu przy dłuższej
+        # kolejce, np. wielu skanów OCR).
+        self.batch_total = len(keys)
         self.processing = True
         self.cancel_button.configure(state="normal")
         self.progress_bar.configure(mode="indeterminate")
@@ -505,7 +512,10 @@ class AnonymizerApp(ctk.CTk):
         item = self.items[key]
         item.status = FileStatus.PRZETWARZANIE
         self._refresh_row(key)
-        self.status_label.configure(text=f"Przetwarzanie: {item.path.name}")
+        done = self.batch_total - len(self.pending_keys)
+        self.status_label.configure(
+            text=f"Przetwarzanie ({done}/{self.batch_total}): {item.path.name}"
+        )
 
         options = AnonymizeOptions()
         self.active_thread = threading.Thread(
@@ -636,6 +646,10 @@ class ReviewWindow(ctk.CTkToplevel):
         self.on_finished = on_finished
         self.title(f"Podgląd przed zapisem - {item.path.name}")
         self.geometry("820x640")
+        # Bez minsize okno dało się zmniejszyć do rozmiaru, w którym przyciski
+        # "Zatwierdź i zapisz"/"Odrzuć" znikały poza widocznym obszarem, a nie
+        # dało się ich odzyskać bez zmiany rozmiaru okna z powrotem.
+        self.minsize(640, 480)
 
         staged = item.staged
         assert staged is not None
@@ -647,8 +661,28 @@ class ReviewWindow(ctk.CTkToplevel):
         )
         header.pack(side="top", anchor="w", padx=14, pady=(14, 4))
 
+        info_sections_present = bool(
+            staged.warnings or staged.potentially_missed or staged.uncertain_detections
+            or staged.leak_findings
+        )
+        # Sekcje "Ostrzeżenia/Potencjalnie pominięte/Niepewne trafienia" mogą
+        # być teraz dłuższe niż przed integracją GLiNER (dodatkowe wpisy
+        # "[GLiNER] ..." w uncertain_detections) - przy stałym rozmiarze okna
+        # (820x640) długa lista mogła zepchnąć podgląd tekstu i przyciski
+        # "Zatwierdź i zapisz"/"Odrzuć" poza widoczny obszar. Dlatego sekcje
+        # informacyjne trafiają do przewijanego panelu o ograniczonej
+        # wysokości, a podgląd tekstu i przyciski akcji zawsze zostają
+        # widoczne.
+        info_parent: ctk.CTkScrollableFrame | ReviewWindow
+        if info_sections_present:
+            info_scroll = ctk.CTkScrollableFrame(self, fg_color="transparent", height=220)
+            info_scroll.pack(side="top", fill="x", padx=14, pady=(4, 0))
+            info_parent = info_scroll
+        else:
+            info_parent = self
+
         if staged.warnings:
-            warn_frame = ctk.CTkFrame(self)
+            warn_frame = ctk.CTkFrame(info_parent)
             warn_frame.pack(side="top", fill="x", padx=14, pady=4)
             ctk.CTkLabel(warn_frame, text="Ostrzeżenia:", font=ctk.CTkFont(weight="bold")).pack(
                 anchor="w", padx=8, pady=(6, 0)
@@ -659,7 +693,7 @@ class ReviewWindow(ctk.CTkToplevel):
                 )
 
         if staged.potentially_missed:
-            missed_frame = ctk.CTkFrame(self)
+            missed_frame = ctk.CTkFrame(info_parent)
             missed_frame.pack(side="top", fill="x", padx=14, pady=4)
             ctk.CTkLabel(
                 missed_frame,
@@ -678,7 +712,7 @@ class ReviewWindow(ctk.CTkToplevel):
                 ).pack(anchor="w", padx=16, pady=2)
 
         if staged.uncertain_detections:
-            uncertain_frame = ctk.CTkFrame(self)
+            uncertain_frame = ctk.CTkFrame(info_parent)
             uncertain_frame.pack(side="top", fill="x", padx=14, pady=4)
             ctk.CTkLabel(
                 uncertain_frame,
@@ -698,7 +732,7 @@ class ReviewWindow(ctk.CTkToplevel):
 
         self.leak_ack_var: ctk.BooleanVar | None = None
         if staged.leak_findings:
-            leak_frame = ctk.CTkFrame(self, fg_color="#7a1f1f")
+            leak_frame = ctk.CTkFrame(info_parent, fg_color="#7a1f1f")
             leak_frame.pack(side="top", fill="x", padx=14, pady=4)
             ctk.CTkLabel(
                 leak_frame,
@@ -764,9 +798,29 @@ class ReviewWindow(ctk.CTkToplevel):
             command=self._on_approve,
         ).pack(side="right")
 
+        # Bez obsługi przycisku "X" okna i klawisza Escape zamknięcie okna
+        # inaczej niż przez "Odrzuć"/"Zatwierdź i zapisz" (np. Alt+F4, klik na
+        # "X", Escape z przyzwyczajenia) nie sprzątało katalogu tymczasowego
+        # stagingu (wyciek na dysku) i nie odświeżało wiersza w kolejce -
+        # plik zostawał trwale w stanie "Do weryfikacji" bez możliwości
+        # ponownego otwarcia podglądu. Oba te zdarzenia traktujemy identycznie
+        # jak jawne "Odrzuć" - bezpieczny domyślny wybór, bo nic nie zostaje
+        # zapisane bez świadomego kliknięcia "Zatwierdź i zapisz".
+        self.protocol("WM_DELETE_WINDOW", self._on_reject)
+        self.bind("<Escape>", lambda _event: self._on_reject())
+
+        # Okno bywało otwierane w tle głównego okna (zależnie od menedżera
+        # okien) i nie przyjmowało fokusu klawiatury, więc powyższy Escape
+        # nie działał, dopóki użytkownik nie kliknął myszką w okno podglądu.
+        self.lift()
+        self.focus_force()
         self.grab_set()  # modalne - decyzja o zapisie musi być świadoma i jednoznaczna
 
     def _on_reject(self) -> None:
+        if self.item.staged is None:
+            # Już obsłużone (np. Escape i zamknięcie okna "X" wywołane niemal
+            # jednocześnie) - nie próbuj sprzątać/zamykać drugi raz.
+            return
         try:
             discard_staged(self.item.staged)
         finally:
