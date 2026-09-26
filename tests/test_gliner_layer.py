@@ -7,11 +7,20 @@ niezależny od realnego modelu: obsługę brakującego pliku/pakietu przez
 użyciu prostego fake modelu (bez importu `gliner`)."""
 
 import builtins
+import hashlib
+import zipfile
 
 import pytest
 
+from app.config import GlinerConfig
 from app.pipeline import gliner_layer
-from app.pipeline.gliner_layer import GlinerCandidate, GlinerUnavailableError, find_gliner_candidates
+from app.pipeline.gliner_layer import (
+    GlinerCandidate,
+    GlinerChecksumError,
+    GlinerUnavailableError,
+    download_gliner_model,
+    find_gliner_candidates,
+)
 
 
 def test_load_model_missing_file_raises_clear_error(tmp_path):
@@ -87,3 +96,92 @@ def test_find_gliner_candidates_wraps_prediction_errors():
 
     with pytest.raises(GlinerUnavailableError, match="Błąd predykcji"):
         find_gliner_candidates("jakiś tekst", _BrokenModel())
+
+
+# -- download_gliner_model (mechanizm "na żądanie", wzorem download_libreoffice) --
+
+
+def test_download_gliner_model_requires_checksum_configured(tmp_path):
+    config = GlinerConfig(model_path=str(tmp_path / "model_quantized.onnx"), release_sha256="")
+
+    with pytest.raises(GlinerChecksumError):
+        download_gliner_model(config=config)
+
+
+def test_download_gliner_model_rejects_wrong_checksum(tmp_path, monkeypatch):
+    fake_archive_content = b"nie prawdziwe archiwum modelu"
+
+    def fake_urlretrieve(url, filename, reporthook=None):
+        with open(filename, "wb") as f:
+            f.write(fake_archive_content)
+        if reporthook:
+            reporthook(1, len(fake_archive_content), len(fake_archive_content))
+
+    monkeypatch.setattr(gliner_layer.urllib.request, "urlretrieve", fake_urlretrieve)
+
+    config = GlinerConfig(
+        model_path=str(tmp_path / "model_quantized.onnx"),
+        release_url="https://example.invalid/gliner-model.zip",
+        release_sha256="0" * 64,
+    )
+    with pytest.raises(GlinerChecksumError):
+        download_gliner_model(config=config)
+
+
+def test_download_gliner_model_accepts_correct_checksum_and_extracts(tmp_path, monkeypatch):
+    source_zip = tmp_path / "source.zip"
+    with zipfile.ZipFile(source_zip, "w") as zf:
+        zf.writestr("model_quantized.onnx", "fake gliner model")
+        zf.writestr("gliner_config.json", "{}")
+    archive_bytes = source_zip.read_bytes()
+    expected_sha256 = hashlib.sha256(archive_bytes).hexdigest()
+
+    def fake_urlretrieve(url, filename, reporthook=None):
+        with open(filename, "wb") as f:
+            f.write(archive_bytes)
+        if reporthook:
+            reporthook(1, len(archive_bytes), len(archive_bytes))
+
+    monkeypatch.setattr(gliner_layer.urllib.request, "urlretrieve", fake_urlretrieve)
+
+    target_dir = tmp_path / "gliner"
+    config = GlinerConfig(
+        model_path=str(target_dir / "model_quantized.onnx"),
+        release_url="https://example.invalid/gliner-model.zip",
+        release_sha256=expected_sha256,
+    )
+    result = download_gliner_model(config=config)
+
+    assert result == target_dir / "model_quantized.onnx"
+    assert result.exists()
+    assert result.read_text() == "fake gliner model"
+    assert (target_dir / "gliner_config.json").exists()
+
+
+def test_download_gliner_model_reports_progress(tmp_path, monkeypatch):
+    source_zip = tmp_path / "source.zip"
+    with zipfile.ZipFile(source_zip, "w") as zf:
+        zf.writestr("model_quantized.onnx", "fake gliner model")
+    archive_bytes = source_zip.read_bytes()
+    expected_sha256 = hashlib.sha256(archive_bytes).hexdigest()
+
+    def fake_urlretrieve(url, filename, reporthook=None):
+        with open(filename, "wb") as f:
+            f.write(archive_bytes)
+        if reporthook:
+            reporthook(1, len(archive_bytes), len(archive_bytes))
+
+    monkeypatch.setattr(gliner_layer.urllib.request, "urlretrieve", fake_urlretrieve)
+
+    progress_calls: list[tuple[int, int]] = []
+    config = GlinerConfig(
+        model_path=str(tmp_path / "out" / "model_quantized.onnx"),
+        release_url="https://example.invalid/gliner-model.zip",
+        release_sha256=expected_sha256,
+    )
+    download_gliner_model(
+        config=config,
+        progress_callback=lambda done, total: progress_calls.append((done, total)),
+    )
+
+    assert progress_calls == [(len(archive_bytes), len(archive_bytes))]

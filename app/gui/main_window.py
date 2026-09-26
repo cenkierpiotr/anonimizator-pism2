@@ -43,6 +43,7 @@ from app.main import (
 )
 from app.pipeline.convert_to_pdf import convert_many_to_pdf
 from app.pipeline.format_detect import UnsupportedDocumentError
+from app.pipeline.gliner_layer import GlinerChecksumError, download_gliner_model
 from app.pipeline.legacy_convert import LibreOfficeNotAvailableError, download_libreoffice
 from app.pipeline.leak_check import LeakDetectedError
 from app.pipeline.metadata_scrub import neutral_output_filename
@@ -262,6 +263,9 @@ class AnonymizerApp(ctk.CTk):
         ).pack(side="left", padx=8)
         self._secondary_button(
             toolbar, "Zainstaluj obsługę .doc", self._on_install_libreoffice
+        ).pack(side="left", padx=8)
+        self._secondary_button(
+            toolbar, "Pobierz model GLiNER", self._on_download_gliner_model
         ).pack(side="left", padx=8)
         self.cancel_button = self._secondary_button(toolbar, "Anuluj", self._on_cancel)
         self.cancel_button.configure(state="disabled")
@@ -561,6 +565,24 @@ class AnonymizerApp(ctk.CTk):
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror(
                 "Anonimizator Dokumentów", f"Nie udało się zainstalować komponentu: {exc}"
+            )
+
+    def _on_download_gliner_model(self) -> None:
+        """Pobiera model GLiNER "na żądanie" (patrz `gliner_layer.
+        download_gliner_model` - mechanizm analogiczny do LibreOffice
+        powyżej). Nie blokuje działania aplikacji, jeśli się nie uda - warstwa
+        GLiNER jest opcjonalna, `_on_install_libreoffice` obsługuje błędy
+        analogicznie."""
+        try:
+            download_gliner_model()
+            messagebox.showinfo(
+                "Anonimizator Dokumentów", "Model GLiNER pobrany pomyślnie."
+            )
+        except GlinerChecksumError as exc:
+            messagebox.showerror("Anonimizator Dokumentów", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror(
+                "Anonimizator Dokumentów", f"Nie udało się pobrać modelu GLiNER: {exc}"
             )
 
     # -- pętla odpytywania kolejki (uruchamiana przez after() w wątku Tk) --

@@ -28,8 +28,14 @@ tkinterdnd2>=0.4.2
 pytest>=8.0
 fpdf2>=2.7
 
-# Opcjonalna warstwa GLiNER (patrz app/pipeline/gliner_layer.py) - feature
-# flag AppConfig.gliner_enabled jest domyślnie WYŁĄCZONY, więc te pakiety
-# NIE są instalowane domyślnie. Odkomentuj tylko jeśli włączasz tę warstwę:
-# gliner
-# onnxruntime
+# Warstwa GLiNER (patrz app/pipeline/gliner_layer.py) - AppConfig.gliner_enabled
+# jest domyślnie WŁĄCZONE od Fazy 5 (23.09.2026), więc te pakiety muszą być
+# zainstalowane domyślnie. `gliner` ciągnie za sobą `torch`+`transformers`
+# (duży, ale nieunikniony przy realnym modelu NER). Jeśli plik modelu ONNX pod
+# AppConfig.gliner.model_path nie istnieje (np. świeża instalacja, model
+# jeszcze nie pobrany przyciskiem "Pobierz model GLiNER" -
+# `gliner_layer.download_gliner_model()`) - GlinerUnavailableError jest
+# łapane jako ostrzeżenie w app/main.py, nie crash - te pakiety same nie
+# wystarczą, potrzebny jest jeszcze plik modelu.
+gliner
+onnxruntime

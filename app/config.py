@@ -8,8 +8,11 @@ politykę - `identity_cluster.py` czyta te ustawienia stąd, nie duplikuje logik
 
 from __future__ import annotations
 
+import os
+import platform
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 
 
 class CategoryPolicy(str, Enum):
@@ -62,24 +65,57 @@ class NerConfig:
     model_name: str = "pl_core_news_md"
 
 
+def _default_gliner_model_path() -> str:
+    """Domyślna ścieżka pliku modelu ONNX GLiNER w katalogu danych aplikacji -
+    ta sama konwencja co `legacy_convert._cache_root` dla LibreOffice
+    (`%LOCALAPPDATA%\\AnonimizatorPism\\...` na Windows,
+    `~/.cache/AnonimizatorPism/...` na Linuksie w dev/CI). Plik pod tą ścieżką
+    NIE jest częścią repo/instalatora - jest pobierany "na żądanie" przez
+    `gliner_layer.download_gliner_model()` (patrz GUI: przycisk "Pobierz model
+    GLiNER"), analogicznie do mechanizmu LibreOffice w `LibreOfficeConfig`.
+    Dzięki temu domyślna wartość nie jest zahardkodowaną ścieżką specyficzną
+    dla jednej maszyny deweloperskiej."""
+    if platform.system() == "Windows":
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+    else:
+        # Ścieżka używana tylko w dev/CI na Linuksie - na Windows zawsze LOCALAPPDATA.
+        base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return str(Path(base) / "AnonimizatorPism" / "gliner" / "model_quantized.onnx")
+
+
 @dataclass
 class GlinerConfig:
     """Ustawienia opcjonalnej warstwy GLiNER (zero-shot NER) - patrz
     `app/pipeline/gliner_layer.py` i plan
     `.claude/plans/encapsulated-splashing-panda.md`. Aktywna tylko gdy
-    `AppConfig.gliner_enabled` jest `True` (domyślnie wyłączone).
+    `AppConfig.gliner_enabled` jest `True` (domyślnie WŁĄCZONE od Fazy 5).
 
-    `model_path` wskazuje domyślnie na eksport ONNX z projektu treningowego-
-    siostry (`/config/gliner-anonimizator-pl-finetune`) - mniejszy/szybszy
-    wariant `anonPL-300M`, wybrany jako domyślny bo aplikacja jest desktopowa
-    (czas ładowania/inferencji ma znaczenie). Jeśli plik pod tą ścieżką nie
-    istnieje, `gliner_layer.load_model` zgłasza czytelny `GlinerUnavailableError`
-    zamiast crashować aplikację - ścieżka jest w pełni konfigurowalna, żeby dało
-    się wskazać inny eksport (np. `anonPL-494M`) bez zmiany kodu."""
+    `model_path` wskazuje domyślnie na katalog danych aplikacji
+    (`_default_gliner_model_path()`) - plik modelu (eksport ONNX, wariant
+    `anonPL-300M`: mniejszy/szybszy, wybrany bo aplikacja jest desktopowa i
+    czas ładowania/inferencji ma znaczenie) jest pobierany "na żądanie" przez
+    `gliner_layer.download_gliner_model()`, analogicznie do mechanizmu
+    LibreOffice (`LibreOfficeConfig` + `legacy_convert.download_libreoffice`)
+    - URL do archiwum ZIP na GitHub Releases tego repo + weryfikacja SHA-256.
+    Jeśli plik pod tą ścieżką nie istnieje (świeża instalacja, model jeszcze
+    nie pobrany), `gliner_layer.load_model` zgłasza czytelny
+    `GlinerUnavailableError` zamiast crashować aplikację - ścieżka jest w
+    pełni konfigurowalna, żeby dało się wskazać inny eksport (np.
+    `anonPL-494M`) bez zmiany kodu."""
 
-    model_path: str = (
-        "/config/gliner-anonimizator-pl-finetune/models/anonPL-300M/onnx/model_quantized.onnx"
+    model_path: str = field(default_factory=_default_gliner_model_path)
+    # Archiwum ZIP z eksportem ONNX (plik modelu + config.json/tokenizer -
+    # `GLiNER.from_pretrained` wymaga całego katalogu, nie tylko samego
+    # .onnx) hostowane w GitHub Releases TEGO SAMEGO repo, wzorem
+    # `LibreOfficeConfig.release_url`.
+    release_url: str = (
+        "https://github.com/cenkierpiotr/anonimizator-pism/releases/"
+        "download/gliner-anonpl-300m-onnx-v1/anonPL-300M-onnx.zip"
     )
+    # Placeholder - MUSI zostać podmieniony na realny SHA-256 artefaktu przed
+    # pierwszym wydaniem, inaczej download_gliner_model() odmówi weryfikacji
+    # (patrz LibreOfficeConfig.release_sha256 - identyczny wzorzec/TODO).
+    release_sha256: str = ""
     # Próg pewności predykcji [0, 1] - trafienia poniżej progu są odrzucane
     # przed dopisaniem do uncertain_collector (patrz detect_all.detect_in_text).
     confidence_threshold: float = 0.5
@@ -121,9 +157,11 @@ class AppConfig:
     # GLiNER NIGDY nie trafiają bezpośrednio do resolve()/Replacement -
     # wyłącznie do uncertain_collector z prefiksem "[GLiNER]", zawsze do
     # ręcznej weryfikacji w ReviewWindow. Jeśli plik modelu ONNX pod
-    # `GlinerConfig.model_path` nie istnieje (np. świeża instalacja bez
-    # ręcznie dogranego modelu/pakietu `gliner`) - `GlinerUnavailableError`
-    # jest łapany w app/main.py i zamieniany na ostrzeżenie, NIE crash.
+    # `GlinerConfig.model_path` nie istnieje (np. świeża instalacja, model
+    # jeszcze nie pobrany przyciskiem "Pobierz model GLiNER" - patrz
+    # `gliner_layer.download_gliner_model()`, albo pakiet `gliner` nie jest
+    # zainstalowany) - `GlinerUnavailableError` jest łapany w app/main.py i
+    # zamieniany na ostrzeżenie, NIE crash.
     gliner_enabled: bool = True
 
     def policy_for(self, category: str) -> CategoryPolicy:

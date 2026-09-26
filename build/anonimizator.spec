@@ -34,6 +34,16 @@ NIE bundlujemy LibreOffice - to komponent pobierany na żądanie w runtime
 (patrz `app/pipeline/legacy_convert.py`, sekcja planu "Pobieranie LibreOffice
 na żądanie"), świadomie pominięty tutaj.
 
+NIE bundlujemy pliku modelu GLiNER (`*.onnx`, ~150-300MB) - analogicznie do
+LibreOffice powyżej, jest pobierany "na żądanie" w runtime przez
+`app/pipeline/gliner_layer.py::download_gliner_model()` (patrz GUI: przycisk
+"Pobierz model GLiNER" w `main_window.py`), żeby nie pompować rozmiaru
+instalatora o setki MB na trwałe dla warstwy, która i tak jest tylko
+dodatkowym sygnałem recall. Sam PAKIET `gliner` (kod Pythona) + jego
+zależności (`onnxruntime`, `torch`, `transformers`) SĄ bundlowane - patrz
+bloki `hiddenimports`/`collect_all` niżej - żeby import się powiódł zanim
+model zostanie pobrany.
+
 TODO (Tesseract - binarka, nie tylko dane): `resources/tessdata/*.traineddata`
 to tylko dane językowe OCR - do faktycznego działania OCR na czystym Windows
 (wymóg "zero preinstalowanych zależności") potrzebna jest też sama binarka
@@ -54,7 +64,12 @@ zbundlowanie plików.
 import os
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_data_files,
+    collect_dynamic_libs,
+    collect_submodules,
+)
 
 block_cipher = None
 
@@ -175,12 +190,20 @@ _hiddenimports = [
     # niżej, które wciąga natywną binarkę tkdnd (bez niej `TkinterDnD._require`
     # rzuci RuntimeError w runtime na czystym Windows).
     "tkinterdnd2",
+    # GLiNER (zero-shot NER, patrz app/pipeline/gliner_layer.py) - podobnie do
+    # spaCy, komponenty i backendy są ładowane dynamicznie po nazwie.
+    "gliner",
+    "onnxruntime",
+    "onnxruntime.capi",
+    "onnxruntime.capi._pybind_state",
+    "transformers",
+    "torch",
 ]
 
 # collect_submodules na najbardziej "dynamicznych" pakietach - taniej i
 # bezpieczniej niż ręcznie wymieniać każdy możliwy submoduł, a znacznie
 # tańsze niż collect_all na całym spacy (które wciągnęłoby też testy/docs).
-for _pkg in ("spacy", "thinc", "srsly", "catalogue", "odf"):
+for _pkg in ("spacy", "thinc", "srsly", "catalogue", "odf", "gliner", "onnxruntime"):
     try:
         _hiddenimports.extend(collect_submodules(_pkg))
     except Exception:
@@ -220,11 +243,50 @@ try:
 except Exception:
     pass
 
+# GLiNER - dane pakietu (configi domyślne, brak wag - te są w pliku modelu
+# pobieranym na żądanie, patrz komentarz w module docstring wyżej). collect_all
+# zwraca (datas, binaries, hiddenimports) tak jak dla modelu spaCy powyżej.
+_gliner_binaries = []
+try:
+    _gliner_datas, _gliner_binaries, _gliner_hidden = collect_all("gliner")
+    _datas.extend(_gliner_datas)
+    _hiddenimports.extend(_gliner_hidden)
+except Exception:
+    # `gliner` może nie być zainstalowany w środowisku, w którym ten plik jest
+    # tylko parsowany (`compile()`-check na Linuksie) - w CI Windows jest
+    # zainstalowany z requirements.txt (patrz komentarz tam o GLiNER).
+    pass
+
+# onnxruntime - biblioteka natywna (.dll na Windows, .so na Linuksie) jest
+# dystrybuowana jako część pakietu wheela (onnxruntime/capi/*), nie jako
+# zwykły kod Pythona - `collect_dynamic_libs` wyszukuje takie pliki binarne
+# wewnątrz zainstalowanego pakietu (analogicznie do ręcznego vendoringu
+# Tesseracta wyżej, ale tu ścieżka jest już znana z instalacji pip, więc nie
+# trzeba osobnego kroku CI).
+try:
+    _onnxruntime_binaries = collect_dynamic_libs("onnxruntime")
+except Exception:
+    _onnxruntime_binaries = []
+
+# transformers/torch - biblioteki dodatkowe ciągnięte przez `gliner`; torch
+# ma też natywne biblioteki (.dll/.so) dystrybuowane jako część pakietu.
+try:
+    _torch_datas, _torch_binaries, _torch_hidden = collect_all("torch")
+    _datas.extend(_torch_datas)
+    _hiddenimports.extend(_torch_hidden)
+except Exception:
+    _torch_binaries = []
+
+try:
+    _datas.extend(collect_data_files("transformers"))
+except Exception:
+    pass
+
 
 a = Analysis(
     [_ENTRY_SCRIPT],
     pathex=[str(_PROJECT_ROOT)],
-    binaries=_tesseract_binaries + _model_binaries,
+    binaries=_tesseract_binaries + _model_binaries + _gliner_binaries + _onnxruntime_binaries + _torch_binaries,
     datas=_datas,
     hiddenimports=_hiddenimports,
     hookspath=[],

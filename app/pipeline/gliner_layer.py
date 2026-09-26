@@ -15,16 +15,34 @@ Model jest lazy-loaded RAZ per proces (wzorem `app/pipeline/ner.py::load_nlp`,
 przetwarzania dokumentu, nie w pętli per-blok.
 
 Cała warstwa jest za feature flagiem `AppConfig.gliner_enabled` (domyślnie
-WYŁĄCZONA). Pakiet `gliner` NIE jest obowiązkową zależnością aplikacji (nie
-jest w `requirements.txt` jako pozycja domyślna) - import jest wykonywany
-leniwie wewnątrz `load_model()`, żeby ten moduł (i reszta aplikacji) dał się
-zaimportować bez tego pakietu zainstalowanego, dopóki flaga jest wyłączona."""
+WŁĄCZONA od Fazy 5). Pakiet `gliner` NIE jest obowiązkową zależnością
+aplikacji w tym sensie, że import jest wykonywany leniwie wewnątrz
+`load_model()`, żeby ten moduł (i reszta aplikacji) dał się zaimportować bez
+tego pakietu zainstalowanego.
+
+Plik modelu ONNX (`GlinerConfig.model_path`) NIE jest częścią repo/instalatora
+(binarka ~150-300MB) - jest pobierany "na żądanie" przez
+`download_gliner_model()` poniżej, analogicznie do mechanizmu LibreOffice
+(`legacy_convert.download_libreoffice()`): archiwum ZIP z GitHub Releases
+tego samego repo, weryfikacja SHA-256, rozpakowanie do katalogu docelowego.
+Świeża instalacja bez pobranego modelu nie crashuje - `load_model()` zgłasza
+czytelny `GlinerUnavailableError`, złapany w `app/main.py` jako ostrzeżenie."""
 
 from __future__ import annotations
 
+import hashlib
+import shutil
+import tempfile
+import urllib.request
+import zipfile
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Callable
+
+from app.config import GlinerConfig
+
+ProgressCallback = Callable[[int, int], None]  # (bytes_pobrane, bytes_razem)
 
 
 class GlinerUnavailableError(RuntimeError):
@@ -35,6 +53,77 @@ class GlinerUnavailableError(RuntimeError):
     użytkownika (dopisane do `warnings`), NIE jako fatalny błąd całego
     przetwarzania - GLiNER jest opcjonalną warstwą recall, nie fundamentem
     pipeline'u."""
+
+
+class GlinerChecksumError(RuntimeError):
+    """Pobrane archiwum modelu GLiNER nie zgadza się z oczekiwanym SHA-256 -
+    odrzucone, nie rozpakowujemy niezweryfikowanego pliku binarnego (patrz
+    `legacy_convert.LibreOfficeChecksumError` - identyczny wzorzec). Zgłaszany
+    też, gdy `GlinerConfig.release_sha256` jest jeszcze pustym placeholderem
+    (release nie został opublikowany)."""
+
+
+def _sha256_of_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def download_gliner_model(
+    config: GlinerConfig | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> Path:
+    """Pobiera archiwum ZIP z eksportem ONNX modelu GLiNER (plik modelu +
+    pliki konfiguracyjne/tokenizera wymagane przez `GLiNER.from_pretrained`,
+    patrz `load_model()` poniżej) z GitHub Releases TEGO SAMEGO repo,
+    weryfikuje SHA-256 archiwum i rozpakowuje do katalogu nadrzędnego
+    `config.model_path`. Zwraca ścieżkę do rozpakowanego pliku modelu.
+
+    Mechanizm analogiczny do `legacy_convert.download_libreoffice()` - patrz
+    tam po pełne uzasadnienie wzorca (artefakt hostowany we własnym repo
+    Releases, weryfikacja checksum, czytelny błąd gdy sha256 nie jest jeszcze
+    skonfigurowany). Wymaga jednorazowego połączenia z siecią; użytkownik bez
+    internetu może zamiast tego ręcznie skopiować gotowy eksport ONNX pod
+    `config.model_path` (ścieżka jest w pełni konfigurowalna)."""
+    config = config or GlinerConfig()
+    if not config.release_sha256:
+        raise GlinerChecksumError(
+            "Brak skonfigurowanego SHA-256 dla artefaktu modelu GLiNER - "
+            "release jeszcze nie został opublikowany (patrz app/config.py: "
+            "GlinerConfig.release_sha256)."
+        )
+
+    target_path = Path(config.model_path)
+    target_dir = target_path.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="gliner-download-") as tmp_dir:
+        archive_path = Path(tmp_dir) / "gliner-model.zip"
+
+        def _reporthook(block_num: int, block_size: int, total_size: int) -> None:
+            if progress_callback is not None:
+                progress_callback(min(block_num * block_size, total_size), total_size)
+
+        urllib.request.urlretrieve(config.release_url, archive_path, reporthook=_reporthook)
+
+        actual_sha256 = _sha256_of_file(archive_path)
+        if actual_sha256 != config.release_sha256:
+            raise GlinerChecksumError(
+                f"Suma kontrolna pobranego archiwum ({actual_sha256}) nie zgadza się "
+                f"z oczekiwaną ({config.release_sha256}) - plik odrzucony."
+            )
+
+        with zipfile.ZipFile(archive_path) as zf:
+            zf.extractall(target_dir)
+
+    if not target_path.exists():
+        raise RuntimeError(
+            f"Rozpakowano archiwum modelu GLiNER, ale nie znaleziono {target_path} - "
+            "sprawdź strukturę archiwum wydania."
+        )
+    return target_path
 
 
 # Taksonomia z planu: Grupa A (kontekstowe, wolnotekstowe, pełny trening) +
