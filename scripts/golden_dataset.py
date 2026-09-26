@@ -29,6 +29,7 @@ import json
 import random
 import sys
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -36,6 +37,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.pipeline import gazetteers
 from app.pipeline.detect_all import Replacement, detect_in_text
 from app.pipeline.identity_cluster import IdentityRegistry
+
+
+@lru_cache(maxsize=None)
+def _sorted_first_names() -> list[str]:
+    return sorted(gazetteers.first_names())
+
+
+@lru_cache(maxsize=None)
+def _sorted_surnames() -> list[str]:
+    return sorted(gazetteers.surnames())
+
+
+@lru_cache(maxsize=None)
+def _sorted_cities() -> list[str]:
+    return sorted(gazetteers.cities())
 
 # ---------------------------------------------------------------------------
 # Generatory pojedynczych wartości z poprawną checksumą / kształtem regexu
@@ -149,7 +165,7 @@ def gen_nors_ref(rng: random.Random) -> str:
 
 def gen_court_institution(rng: random.Random) -> str:
     kind = rng.choice(["Sąd Rejonowy", "Sąd Okręgowy", "Sąd Apelacyjny"])
-    city = rng.choice(sorted(gazetteers.cities())).capitalize()
+    city = rng.choice(_sorted_cities()).capitalize()
     return f"{kind} w {city}"
 
 
@@ -174,13 +190,13 @@ def gen_email(rng: random.Random, first: str, last: str) -> str:
 
 def gen_postal_city(rng: random.Random) -> str:
     postal = f"{rng.randint(0, 99):02d}-{rng.randint(0, 999):03d}"
-    city = rng.choice(sorted(gazetteers.cities())).capitalize()
+    city = rng.choice(_sorted_cities()).capitalize()
     return f"{postal} {city}"
 
 
 def gen_person_name(rng: random.Random) -> tuple[str, str]:
-    first = rng.choice(sorted(gazetteers.first_names())).capitalize()
-    last = rng.choice(sorted(gazetteers.surnames())).capitalize()
+    first = rng.choice(_sorted_first_names()).capitalize()
+    last = rng.choice(_sorted_surnames()).capitalize()
     return first, last
 
 
