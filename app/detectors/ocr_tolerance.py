@@ -31,6 +31,10 @@ _CONFUSABLES: dict[str, tuple[str, ...]] = {
 
 _MAX_SUBSTITUTIONS = 2
 
+# Alias publiczny do reużycia przez skrypty augmentacji danych treningowych
+# (np. `scripts/ocr_noise_augment.py`) bez sięgania po nazwę "prywatną" (`_`).
+CONFUSABLES = _CONFUSABLES
+
 # Klasa znaków do budowania "rozmytych" wzorców regex w detektorach z
 # `ocr_tolerant=True` - patrz `Detector.fuzzy_pattern` w `base.py`. Bez tego
 # regex czysto cyfrowy (np. `\d{11}` dla PESEL) w ogóle nie dopasuje kandydata,

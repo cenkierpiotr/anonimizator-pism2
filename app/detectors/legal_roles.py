@@ -11,6 +11,7 @@ from app.detectors.base import Detector
 _ROLES = (
     r"Pan|Pani|Mec\.|notariusz|adwokat|radca prawny|pełnomocnik|powód|pozwany"
     r"|świadek|wnioskodawca|uczestnik"
+    r"|wynajmujący|najemca|wierzyciel|dłużnik|mocodawca|apelujący|spadkobierca"
 )
 
 _PATTERN = (

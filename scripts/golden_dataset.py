@@ -25,9 +25,10 @@ Uruchomienie:
 from __future__ import annotations
 
 import argparse
+import json
 import random
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -84,6 +85,72 @@ def gen_iban(rng: random.Random) -> str:
     remainder = int(numeric) % 97
     check_digits = 98 - remainder
     return f"PL{check_digits:02d}{national}"
+
+
+_REGON_WEIGHTS_9 = (8, 9, 2, 3, 4, 5, 6, 7)
+
+
+def gen_regon(rng: random.Random) -> str:
+    digits = [rng.randint(0, 9) for _ in range(8)]
+    total = sum(w * d for w, d in zip(_REGON_WEIGHTS_9, digits))
+    control = total % 11
+    digits.append(0 if control == 10 else control)
+    return "".join(str(d) for d in digits)
+
+
+def gen_id_card(rng: random.Random) -> str:
+    """Wagi (7,3,1,0,7,3,1,7,3) z `app/detectors/id_card.py::is_valid_id_card`:
+    pierwsze 3 na litery, waga 0 na sam kontrolny (bo dopiero go liczymy),
+    ostatnie 5 na resztę cyfr numeru - stąd control = (litery + reszta_cyfr) % 10."""
+    letters = "".join(rng.choice("ABCDEFGHIJKLMNOPRSTUWXYZ") for _ in range(3))
+    letter_vals = [int(c, 36) for c in letters]
+    rest_digits = [rng.randint(0, 9) for _ in range(5)]
+    letter_sum = sum(v * w for v, w in zip(letter_vals, (7, 3, 1)))
+    rest_sum = sum(d * w for d, w in zip(rest_digits, (7, 3, 1, 7, 3)))
+    control = (letter_sum + rest_sum) % 10
+    return letters + str(control) + "".join(str(d) for d in rest_digits)
+
+
+_VIN_TRANSLIT = {
+    "A": 1, "B": 2, "C": 3, "D": 4, "E": 5, "F": 6, "G": 7, "H": 8,
+    "J": 1, "K": 2, "L": 3, "M": 4, "N": 5, "P": 7, "R": 9,
+    "S": 2, "T": 3, "U": 4, "V": 5, "W": 6, "X": 7, "Y": 8, "Z": 9,
+}
+_VIN_WEIGHTS = (8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2)
+_VIN_ALPHABET = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789"  # bez I/O/Q, jak w is_valid_vin
+
+
+def gen_vin(rng: random.Random) -> str:
+    def char_value(c: str) -> int:
+        return _VIN_TRANSLIT[c] if c.isalpha() else int(c)
+
+    chars = [rng.choice(_VIN_ALPHABET) for _ in range(17)]
+    chars[8] = "0"  # placeholder, nadpisane checksumem poniżej
+    checksum = sum(char_value(c) * w for c, w in zip(chars, _VIN_WEIGHTS)) % 11
+    chars[8] = "X" if checksum == 10 else str(checksum)
+    return "".join(chars)
+
+
+def gen_notarial_act_ref(rng: random.Random) -> str:
+    number = rng.randint(1, 999999)
+    year = rng.randint(2020, 2026)
+    return f"{number}/{year}"
+
+
+def gen_usc_act_ref(rng: random.Random) -> str:
+    number = rng.randint(1, 999999)
+    year = rng.randint(2020, 2026)
+    return f"{number}/{year}"
+
+
+def gen_nors_ref(rng: random.Random) -> str:
+    return f"NORS-{rng.randint(1, 999999)}/{rng.randint(2020, 2026)}"
+
+
+def gen_court_institution(rng: random.Random) -> str:
+    kind = rng.choice(["Sąd Rejonowy", "Sąd Okręgowy", "Sąd Apelacyjny"])
+    city = rng.choice(sorted(gazetteers.cities())).capitalize()
+    return f"{kind} w {city}"
 
 
 def gen_case_number(rng: random.Random) -> str:
@@ -249,11 +316,104 @@ def template_wezwanie(rng: random.Random) -> DocBuilder:
     return b
 
 
+def template_apelacja(rng: random.Random) -> DocBuilder:
+    b = DocBuilder()
+    b.text("APELACJA\n\n")
+    b.text("Do ")
+    b.entity("institution", gen_court_institution(rng))
+    b.text(", sygn. akt ")
+    b.entity("case_number", gen_case_number(rng))
+    b.text("\n\nApelujący:\n")
+    _fill_common(b, rng, "Apelujący")
+    b.text("\nzaskarża wyrok w całości i wnosi o jego zmianę.\n")
+    return b
+
+
+def template_pelnomocnictwo(rng: random.Random) -> DocBuilder:
+    b = DocBuilder()
+    b.text("PEŁNOMOCNICTWO\n\n")
+    _fill_common(b, rng, "Mocodawca")
+    b.text("udziela pełnomocnictwa:\n\n")
+    _fill_common(b, rng, "Pełnomocnik")
+    b.text("do reprezentowania przed sądami, na podstawie aktu notarialnego Rep. A Nr ")
+    b.entity("notarial_act", gen_notarial_act_ref(rng))
+    b.text(".\n")
+    return b
+
+
+def template_postanowienie_spadkowe(rng: random.Random) -> DocBuilder:
+    b = DocBuilder()
+    b.text("POSTANOWIENIE\n\n")
+    b.entity("institution", gen_court_institution(rng))
+    b.text(", sygn. akt ")
+    b.entity("case_number", gen_case_number(rng))
+    b.text("\n\nw sprawie spadku po zmarłym, na podstawie aktu zgonu nr ")
+    b.entity("usc_act", gen_usc_act_ref(rng))
+    b.text(" oraz wpisu w Rejestrze Spadkowym ")
+    b.entity("rejestr_spadkowy", gen_nors_ref(rng))
+    b.text(", stwierdza, że spadkobiercą jest:\n\n")
+    _fill_common(b, rng, "Spadkobierca")
+    b.text("\npostanawia jak w sentencji.\n")
+    return b
+
+
+def template_umowa_najmu(rng: random.Random) -> DocBuilder:
+    b = DocBuilder()
+    b.text("UMOWA NAJMU LOKALU\n\n")
+    _fill_common(b, rng, "Wynajmujący")
+    b.text("a\n\n")
+    _fill_common(b, rng, "Najemca")
+    b.text("zawierają umowę najmu lokalu przy adresie: ")
+    b.entity("address", gen_postal_city(rng))
+    b.text(". Czynsz płatny na rachunek ")
+    b.entity("iban", gen_iban(rng))
+    b.text(".\n")
+    return b
+
+
+def template_wniosek_egzekucyjny(rng: random.Random) -> DocBuilder:
+    b = DocBuilder()
+    b.text("WNIOSEK O WSZCZĘCIE EGZEKUCJI\n\n")
+    b.text("Wierzyciel: ")
+    _fill_common(b, rng, "Wierzyciel")
+    b.text("Dłużnik: ")
+    _fill_common(b, rng, "Dłużnik")
+    b.text("Na podstawie tytułu wykonawczego, sygn. akt ")
+    b.entity("case_number", gen_case_number(rng))
+    b.text(", wnoszę o zajęcie pojazdu o numerze VIN ")
+    b.entity("vehicle_vin", gen_vin(rng))
+    b.text(" oraz środków na rachunku ")
+    b.entity("iban", gen_iban(rng))
+    b.text(".\n")
+    return b
+
+
+def template_protokol_rozprawy(rng: random.Random) -> DocBuilder:
+    b = DocBuilder()
+    b.text("PROTOKÓŁ ROZPRAWY\n\n")
+    b.entity("institution", gen_court_institution(rng))
+    b.text(", sygn. akt ")
+    b.entity("case_number", gen_case_number(rng))
+    witness_first, witness_last = gen_person_name(rng)
+    b.text("\n\nŚwiadek ")
+    b.entity("legal_role_person", f"{witness_first} {witness_last}")
+    b.text(", tożsamość potwierdzona dowodem osobistym nr ")
+    b.entity("id_card", gen_id_card(rng))
+    b.text(", złożył zeznania zgodnie z protokołem.\n")
+    return b
+
+
 _TEMPLATES = {
     "pozew": template_pozew,
     "akt_notarialny": template_akt_notarialny,
     "wyrok": template_wyrok,
     "wezwanie_do_zaplaty": template_wezwanie,
+    "apelacja": template_apelacja,
+    "pelnomocnictwo": template_pelnomocnictwo,
+    "postanowienie_spadkowe": template_postanowienie_spadkowe,
+    "umowa_najmu": template_umowa_najmu,
+    "wniosek_egzekucyjny": template_wniosek_egzekucyjny,
+    "protokol_rozprawy": template_protokol_rozprawy,
 }
 
 
@@ -378,6 +538,24 @@ def format_report(
     return "\n".join(lines)
 
 
+def export_jsonl(docs: list[GoldenDocument], path: Path) -> None:
+    """Eksport surowego ground truth (bez uruchamiania pipeline'u detekcji) do
+    JSONL - jeden dokument na linię, `{"doc_id", "doc_type", "text", "entities":
+    [{"category","start","end","value"}]}`. To wejście dla konwersji do formatu
+    treningowego GLiNER (`convert_to_gliner_format.py` w repo treningowym) -
+    format zostaje "surowy" (offsety znakowe, nie tokenowe), żeby konwerter mógł
+    swobodnie zmieniać tokenizator bez ponownej generacji danych."""
+    with path.open("w", encoding="utf-8") as f:
+        for doc in docs:
+            record = {
+                "doc_id": doc.doc_id,
+                "doc_type": doc.doc_type,
+                "text": doc.text,
+                "entities": [asdict(e) for e in doc.entities],
+            }
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--n", type=int, default=30, help="liczba dokumentów do wygenerowania")
@@ -388,6 +566,12 @@ def main() -> None:
         default=Path(__file__).resolve().parent / "golden_report.md",
         help="ścieżka pliku raportu Markdown",
     )
+    parser.add_argument(
+        "--export-jsonl",
+        type=Path,
+        default=None,
+        help="opcjonalnie: zapisz ground truth (text+entities) do JSONL pod tą ścieżką",
+    )
     args = parser.parse_args()
 
     docs = generate_dataset(args.n, args.seed)
@@ -397,6 +581,10 @@ def main() -> None:
     args.out.write_text(report, encoding="utf-8")
     print(report)
     print(f"\n(raport zapisany też do {args.out})")
+
+    if args.export_jsonl is not None:
+        export_jsonl(docs, args.export_jsonl)
+        print(f"(ground truth JSONL zapisany do {args.export_jsonl})")
 
 
 if __name__ == "__main__":

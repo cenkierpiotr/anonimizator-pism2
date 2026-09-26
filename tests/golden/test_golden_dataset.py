@@ -24,7 +24,10 @@ from app.detectors.pesel import is_valid_pesel
 def test_generate_dataset_produces_requested_number_of_docs():
     docs = gd.generate_dataset(n=8, seed=1)
     assert len(docs) == 8
-    assert {d.doc_type for d in docs} == set(gd._TEMPLATES)
+    assert {d.doc_type for d in docs} <= set(gd._TEMPLATES)
+
+    docs_all = gd.generate_dataset(n=len(gd._TEMPLATES), seed=1)
+    assert {d.doc_type for d in docs_all} == set(gd._TEMPLATES)
 
 
 def test_ground_truth_spans_match_inserted_values():
