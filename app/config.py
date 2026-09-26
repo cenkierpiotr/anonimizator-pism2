@@ -114,10 +114,17 @@ class AppConfig:
     # offset zamiast zostawiania/usuwania - patrz sekcja "Daty i kwoty" w planie.
     date_shifting_enabled: bool = False
     # Feature flag GLiNER (patrz app/pipeline/gliner_layer.py) - domyślnie
-    # WYŁĄCZONE, odwracalny rollout. Trafienia GLiNER NIGDY nie trafiają
-    # bezpośrednio do resolve()/Replacement - wyłącznie do uncertain_collector
-    # z prefiksem "[GLiNER]", zawsze do ręcznej weryfikacji w ReviewWindow.
-    gliner_enabled: bool = False
+    # WŁĄCZONE od Fazy 5 (23.09.2026): ewaluacja na 40 dok. wykazała +69,6pp
+    # recall na Grupie B (identyfikatory) przy zaszumionym OCR, 0/8 naruszeń
+    # zasady bezpieczeństwa w teście rollout (patrz
+    # gliner-anonimizator-pl-finetune/results/gliner_recall_eval.md). Trafienia
+    # GLiNER NIGDY nie trafiają bezpośrednio do resolve()/Replacement -
+    # wyłącznie do uncertain_collector z prefiksem "[GLiNER]", zawsze do
+    # ręcznej weryfikacji w ReviewWindow. Jeśli plik modelu ONNX pod
+    # `GlinerConfig.model_path` nie istnieje (np. świeża instalacja bez
+    # ręcznie dogranego modelu/pakietu `gliner`) - `GlinerUnavailableError`
+    # jest łapany w app/main.py i zamieniany na ostrzeżenie, NIE crash.
+    gliner_enabled: bool = True
 
     def policy_for(self, category: str) -> CategoryPolicy:
         return self.category_policies.get(category, CategoryPolicy.NUMBER)

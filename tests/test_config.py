@@ -36,9 +36,11 @@ def test_ocr_and_ner_defaults():
     assert config.ner.model_name == "pl_core_news_md"
 
 
-def test_gliner_disabled_by_default():
+def test_gliner_enabled_by_default():
+    # Domyślnie WŁĄCZONE od Fazy 5 (23.09.2026) - patrz uzasadnienie w
+    # komentarzu przy AppConfig.gliner_enabled w app/config.py.
     config = AppConfig()
-    assert config.gliner_enabled is False
+    assert config.gliner_enabled is True
 
 
 def test_gliner_config_defaults_present_and_configurable():
