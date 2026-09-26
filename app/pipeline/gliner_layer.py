@@ -40,19 +40,28 @@ class GlinerUnavailableError(RuntimeError):
 # Taksonomia z planu: Grupa A (kontekstowe, wolnotekstowe, pełny trening) +
 # Grupa B (identyfikatory - warstwa odpornościowa na szum OCR, na czystym
 # tekście regex+checksum jest bezbłędny i tak wygra priorytetem w resolve()).
+#
+# UWAGA: to MUSZĄ być dosłownie te same frazy, którymi model był trenowany
+# (patrz `ALL_LABELS` w `scripts/convert_to_gliner_format.py` repo treningowego
+# `gliner-anonimizator-pl-finetune`) - GLiNER po fine-tuningu wiąże znaczenie
+# encji z konkretnym tekstem etykiety, nie z jej nazwą kategorii. Zweryfikowane
+# empirycznie na żywym modelu (anonPL-300M): błędne krótkie etykiety
+# ("legal_role_person" itd.) dawały 1 trafienie na przykładowym tekście,
+# poprawne opisowe frazy PL - 6 trafień na tym samym tekście.
 DEFAULT_LABELS: tuple[str, ...] = (
-    "legal_role_person",
-    "institution",
-    "address",
-    "case_number",
-    "notarial_act",
-    "usc_act",
-    "pesel",
-    "nip",
-    "regon",
-    "iban",
-    "id_card",
-    "vehicle_vin",
+    "osoba fizyczna (strona lub uczestnik postępowania)",
+    "instytucja lub sąd",
+    "adres",
+    "sygnatura sprawy",
+    "numer aktu notarialnego",
+    "numer aktu stanu cywilnego lub poświadczenia dziedziczenia",
+    "numer wpisu w rejestrze spadkowym",
+    "numer PESEL",
+    "numer NIP",
+    "numer REGON",
+    "numer rachunku bankowego IBAN",
+    "numer dowodu osobistego",
+    "numer VIN pojazdu",
 )
 
 
