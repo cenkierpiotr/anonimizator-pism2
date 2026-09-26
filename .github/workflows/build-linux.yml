@@ -36,6 +36,17 @@ jobs:
       - name: Zainstaluj zaleznosci Python (requirements.txt + PyInstaller)
         run: |
           python -m pip install --upgrade pip
+          # CPU-only wheel torch PRZED requirements.txt: `gliner` ciagnie
+          # torch jako zaleznosc, ale inferencja idzie przez onnxruntime
+          # (GLiNER ONNX export) - domyslny wheel z PyPI to build z pelnym
+          # CUDA toolkitem (cublas/cudnn/cufft/nccl itd., kilka GB), ktory
+          # `build/anonimizator.spec` (collect_all("torch")) i tak bundluje
+          # w calosci do one-dir, mimo ze te .so nigdy nie sa wolane w
+          # runtime. Zainstalowany najpierw, ten wheel juz spelnia zaleznosc
+          # `gliner->torch`, wiec `pip install -r requirements.txt` go nie
+          # nadpisuje. Odkryte 26.09.2026 jako przyczyna przekroczenia limitu
+          # 2GB na asset GitHub Release dla portable tar.gz.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
           pip install pyinstaller
 

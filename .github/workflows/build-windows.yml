@@ -58,6 +58,11 @@ jobs:
       - name: Zainstaluj zaleznosci Python (requirements.txt + PyInstaller)
         run: |
           python -m pip install --upgrade pip
+          # CPU-only wheel torch PRZED requirements.txt - patrz identyczny
+          # komentarz w build-linux.yml. Ten sam problem (pelny CUDA toolkit
+          # bundlowany przez collect_all("torch") w anonimizator.spec mimo
+          # ze inferencja idzie przez onnxruntime) dotyczy obu platform.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
           pip install pyinstaller
 
@@ -143,13 +148,23 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dlDir | Out-Null
           New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
           gh release view $tag --repo ${{ github.repository }} *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releaseExists = ($LASTEXITCODE -eq 0)
+          if ($releaseExists) {
             gh release download $tag --repo ${{ github.repository }} --dir $dlDir --clobber --pattern "anonPL-300M-onnx.zip"
             Expand-Archive -Path "$dlDir/anonPL-300M-onnx.zip" -DestinationPath $dstDir -Force
             Write-Host "Zvendorowano model GLiNER do $dstDir"
           } else {
             Write-Warning "Brak Release '$tag' - build bedzie bez zbundlowanego modelu GLiNER (fallback: download_gliner_model() w runtime)."
           }
+          # $LASTEXITCODE po `gh release view` na nieistniejacym Release zostaje
+          # nonzero nawet gdy powyzszy fallback (brak modelu, build kontynuowany)
+          # zadzialal poprawnie - pwsh step w GitHub Actions i tak sprawdza ten
+          # kod na koncu skryptu, co bez tej linii oznaczaloby caly krok/job
+          # jako failed. Odkryte 26.09.2026: to jedyna przyczyna, dla ktorej
+          # KAZDY Windows build na tym (publicznym) repo failowal - release
+          # "gliner-anonpl-300m-onnx-v1" z zamierzenia istnieje tylko na
+          # prywatnym origin.
+          exit 0
 
       - name: Zainstaluj LibreOffice (Chocolatey) i vendoruj dla PyInstaller
         # UWAGA rozmiaru: pelny LibreOffice (Writer+Calc+Impress+...) to
@@ -211,8 +226,13 @@ jobs:
           $version = "0.4.0"
           $tag = "v$version"
           gh release view $tag --repo ${{ github.repository }} *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releaseExists = ($LASTEXITCODE -eq 0)
+          if ($releaseExists) {
             gh release upload $tag "build/Output/*.exe" "AnonimizatorDokumentow-portable-$version.zip" --repo ${{ github.repository }} --clobber
           } else {
             Write-Host "Brak Release $tag - pomijam publikacje artefaktow (zwykly build bez tagu wydania)."
           }
+          # Patrz identyczny komentarz w kroku "Pobierz model GLiNER" wyzej -
+          # $LASTEXITCODE po `gh release view` zostaje nonzero po nieudanym
+          # sprawdzeniu, mimo ze fallback (pomijam publikacje) jest poprawny.
+          exit 0
