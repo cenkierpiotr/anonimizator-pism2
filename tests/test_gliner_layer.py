@@ -6,6 +6,8 @@ niezależny od realnego modelu: obsługę brakującego pliku/pakietu przez
 `GlinerUnavailableError`, oraz konwersję predykcji na `GlinerCandidate` przy
 użyciu prostego fake modelu (bez importu `gliner`)."""
 
+import builtins
+
 import pytest
 
 from app.pipeline import gliner_layer
@@ -21,10 +23,24 @@ def test_load_model_missing_file_raises_clear_error(tmp_path):
 
 def test_load_model_missing_package_raises_clear_error(tmp_path, monkeypatch):
     """Gdy plik modelu istnieje, ale pakiet `gliner` nie jest zainstalowany -
-    czytelny błąd, nie goły ModuleNotFoundError."""
+    czytelny błąd, nie goły ModuleNotFoundError.
+
+    Symulujemy brak pakietu przez monkeypatch `builtins.__import__` (zamiast
+    liczyć na to, że `gliner` faktycznie nie jest zainstalowany w środowisku,
+    w którym testy są odpalane) - test musi dawać ten sam wynik niezależnie
+    od tego, czy `gliner` jest czy nie jest zainstalowany lokalnie."""
     model_file = tmp_path / "model_quantized.onnx"
     model_file.write_bytes(b"nie prawdziwy model, tylko test pliku")
     gliner_layer.load_model.cache_clear()
+
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "gliner":
+            raise ImportError("No module named 'gliner'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
 
     with pytest.raises(GlinerUnavailableError, match="nie jest zainstalowany"):
         gliner_layer.load_model(str(model_file))

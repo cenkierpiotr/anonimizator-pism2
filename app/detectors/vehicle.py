@@ -29,8 +29,21 @@ _VIN_PATTERN = r"\b(?P<value>[A-HJ-NPR-Z0-9]{17})\b"
 _PLATE_PATTERN = r"\b(?P<value>[A-Z]{2,3}\s?[A-Z0-9]{4,5})\b"
 
 
-def _char_value(c: str) -> int:
-    return _VIN_TRANSLIT[c] if c.isalpha() else int(c)
+def _char_value(c: str) -> int | None:
+    """Zwraca wartość znaku w tabeli transliteracji VIN albo `None`, gdy `c`
+    nie jest ani cyfrą, ani literą z `_VIN_TRANSLIT` (uppercase-only).
+
+    Bug znaleziony 26.09.2026: `ocr_tolerance.generate_variants` generuje
+    warianty z podstawieniami cyfra<->litera BEZ wiedzy o docelowym
+    alfabecie pola (np. "1" -> "l" - mała litera, patrz `_CONFUSABLES`).
+    Taki wariant nigdy nie jest poprawnym VIN-em (małe litery są poza
+    dozwolonym zestawem znaków), ale poprzednia wersja tej funkcji zakładała,
+    że KAŻDY znak alfabetyczny jest kluczem w `_VIN_TRANSLIT` i wywalała się
+    `KeyError` na "l"/"o"/"q" itd. - crashowała cały pipeline detekcji
+    zamiast po prostu odrzucić wariant jako nieprawidłowy checksum."""
+    if c.isdigit():
+        return int(c)
+    return _VIN_TRANSLIT.get(c)
 
 
 def is_valid_vin(value: str) -> bool:
@@ -38,7 +51,10 @@ def is_valid_vin(value: str) -> bool:
         return False
     if any(c in "IOQ" for c in value):
         return False
-    checksum = sum(_char_value(c) * w for c, w in zip(value, _VIN_WEIGHTS)) % 11
+    values = [_char_value(c) for c in value]
+    if any(v is None for v in values):
+        return False
+    checksum = sum(v * w for v, w in zip(values, _VIN_WEIGHTS)) % 11
     expected = "X" if checksum == 10 else str(checksum)
     return value[8] == expected
 
