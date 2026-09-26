@@ -25,6 +25,7 @@ from app.pipeline import docx_writer
 from app.pipeline.text_reflow import reflow_lines
 from app.pipeline.detect_all import Replacement, detect_in_text
 from app.pipeline.format_detect import DocumentFormat, UnsupportedDocumentError, detect_format
+from app.pipeline import gliner_layer
 from app.pipeline.identity_cluster import IdentityRegistry
 from app.pipeline.leak_check import LeakDetectedError, LeakFinding, check_docx
 from app.pipeline import small_cell_risk
@@ -117,12 +118,30 @@ def discard_staged(staged: StagedAnonymization) -> None:
     shutil.rmtree(staged.staging_dir, ignore_errors=True)
 
 
+def _load_gliner_model_if_enabled(config: AppConfig, warnings: list[str]):
+    """Wczytuje model GLiNER RAZ na cały dokument (patrz
+    `app/pipeline/gliner_layer.py` - lazy-load per proces przez `lru_cache`,
+    tu tylko decydujemy, czy w ogóle spróbować, na podstawie feature flaga).
+    Niedostępność modelu (pakiet nie zainstalowany / plik ONNX nie istnieje)
+    NIE przerywa przetwarzania dokumentu - trafia jako ostrzeżenie do
+    `warnings`, a warstwa GLiNER jest po prostu pominięta dla tego pliku."""
+    if not config.gliner_enabled:
+        return None
+    try:
+        return gliner_layer.load_model(config.gliner.model_path)
+    except gliner_layer.GlinerUnavailableError as exc:
+        warnings.append(f"Warstwa GLiNER jest włączona, ale niedostępna: {exc}")
+        return None
+
+
 def _detect_fn_for(
     registry: IdentityRegistry,
     nlp,
     sample_texts: list[str] | None = None,
     potentially_missed: list[str] | None = None,
     uncertain_detections: list[str] | None = None,
+    gliner_model=None,
+    gliner_threshold: float = 0.5,
 ) -> Callable[[str], list[tuple[int, int, str]]]:
     def _detect_fn(text: str) -> list[tuple[int, int, str]]:
         if sample_texts is not None and text:
@@ -133,6 +152,8 @@ def _detect_fn_for(
             nlp=nlp,
             potentially_missed_collector=potentially_missed,
             uncertain_collector=uncertain_detections,
+            gliner_model=gliner_model,
+            gliner_threshold=gliner_threshold,
         )
         return [(r.start, r.end, r.label) for r in replacements]
 
@@ -196,11 +217,21 @@ def process_to_staging(
     warnings: list[str] = []
 
     detection = detect_format(input_path)
+    config = options.config or AppConfig()
     registry = IdentityRegistry(options.config)
     sample_texts: list[str] = []
     potentially_missed: list[str] = []
     uncertain_detections: list[str] = []
-    detect_fn = _detect_fn_for(registry, options.nlp, sample_texts, potentially_missed, uncertain_detections)
+    gliner_model = _load_gliner_model_if_enabled(config, warnings)
+    detect_fn = _detect_fn_for(
+        registry,
+        options.nlp,
+        sample_texts,
+        potentially_missed,
+        uncertain_detections,
+        gliner_model=gliner_model,
+        gliner_threshold=config.gliner.confidence_threshold,
+    )
 
     staging_dir = Path(tempfile.mkdtemp(prefix=STAGING_DIR_PREFIX))
     try:

@@ -27,3 +27,9 @@ tkinterdnd2>=0.4.2
 # dev/test only
 pytest>=8.0
 fpdf2>=2.7
+
+# Opcjonalna warstwa GLiNER (patrz app/pipeline/gliner_layer.py) - feature
+# flag AppConfig.gliner_enabled jest domyślnie WYŁĄCZONY, więc te pakiety
+# NIE są instalowane domyślnie. Odkomentuj tylko jeśli włączasz tę warstwę:
+# gliner
+# onnxruntime

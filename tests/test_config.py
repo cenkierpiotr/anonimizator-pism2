@@ -1,4 +1,4 @@
-from app.config import AppConfig, CategoryPolicy, DEFAULT_CATEGORY_POLICIES
+from app.config import AppConfig, CategoryPolicy, DEFAULT_CATEGORY_POLICIES, GlinerConfig
 
 
 def test_default_policy_for_identifying_categories_is_number():
@@ -34,3 +34,18 @@ def test_ocr_and_ner_defaults():
     config = AppConfig()
     assert config.ocr.languages == "pol+eng"
     assert config.ner.model_name == "pl_core_news_md"
+
+
+def test_gliner_disabled_by_default():
+    config = AppConfig()
+    assert config.gliner_enabled is False
+
+
+def test_gliner_config_defaults_present_and_configurable():
+    config = AppConfig()
+    assert isinstance(config.gliner, GlinerConfig)
+    assert config.gliner.model_path
+    assert 0.0 <= config.gliner.confidence_threshold <= 1.0
+
+    config.gliner.model_path = "/inna/sciezka/model.onnx"
+    assert AppConfig().gliner.model_path != "/inna/sciezka/model.onnx"

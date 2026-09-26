@@ -63,6 +63,29 @@ class NerConfig:
 
 
 @dataclass
+class GlinerConfig:
+    """Ustawienia opcjonalnej warstwy GLiNER (zero-shot NER) - patrz
+    `app/pipeline/gliner_layer.py` i plan
+    `.claude/plans/encapsulated-splashing-panda.md`. Aktywna tylko gdy
+    `AppConfig.gliner_enabled` jest `True` (domyślnie wyłączone).
+
+    `model_path` wskazuje domyślnie na eksport ONNX z projektu treningowego-
+    siostry (`/config/gliner-anonimizator-pl-finetune`) - mniejszy/szybszy
+    wariant `anonPL-300M`, wybrany jako domyślny bo aplikacja jest desktopowa
+    (czas ładowania/inferencji ma znaczenie). Jeśli plik pod tą ścieżką nie
+    istnieje, `gliner_layer.load_model` zgłasza czytelny `GlinerUnavailableError`
+    zamiast crashować aplikację - ścieżka jest w pełni konfigurowalna, żeby dało
+    się wskazać inny eksport (np. `anonPL-494M`) bez zmiany kodu."""
+
+    model_path: str = (
+        "/config/gliner-anonimizator-pl-finetune/models/anonPL-300M/onnx/model_quantized.onnx"
+    )
+    # Próg pewności predykcji [0, 1] - trafienia poniżej progu są odrzucane
+    # przed dopisaniem do uncertain_collector (patrz detect_all.detect_in_text).
+    confidence_threshold: float = 0.5
+
+
+@dataclass
 class LibreOfficeConfig:
     """Ustawienia pobierania LibreOffice "na żądanie" (obsługa .doc, patrz plan
     sekcja "Pobieranie LibreOffice na żądanie"). URL/checksum wskazują na
@@ -86,9 +109,15 @@ class AppConfig:
     ocr: OcrConfig = field(default_factory=OcrConfig)
     ner: NerConfig = field(default_factory=NerConfig)
     libreoffice: LibreOfficeConfig = field(default_factory=LibreOfficeConfig)
+    gliner: GlinerConfig = field(default_factory=GlinerConfig)
     # Tryb "date shifting": przesunięcie wszystkich dat o ten sam losowy
     # offset zamiast zostawiania/usuwania - patrz sekcja "Daty i kwoty" w planie.
     date_shifting_enabled: bool = False
+    # Feature flag GLiNER (patrz app/pipeline/gliner_layer.py) - domyślnie
+    # WYŁĄCZONE, odwracalny rollout. Trafienia GLiNER NIGDY nie trafiają
+    # bezpośrednio do resolve()/Replacement - wyłącznie do uncertain_collector
+    # z prefiksem "[GLiNER]", zawsze do ręcznej weryfikacji w ReviewWindow.
+    gliner_enabled: bool = False
 
     def policy_for(self, category: str) -> CategoryPolicy:
         return self.category_policies.get(category, CategoryPolicy.NUMBER)

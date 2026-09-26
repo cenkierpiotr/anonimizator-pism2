@@ -37,7 +37,7 @@ from app.detectors import pesel
 from app.detectors import phone
 from app.detectors import regon
 from app.detectors import vehicle
-from app.pipeline import ner
+from app.pipeline import gliner_layer, ner
 from app.pipeline.context_score import context_boost
 from app.pipeline.identity_cluster import IdentityRegistry
 from app.pipeline.merge import Detection, collapse_for_replacement, resolve
@@ -196,12 +196,49 @@ def _literal_rescan(text: str, known_names: set[str], existing_spans: set[tuple[
     return detections
 
 
+def _append_gliner_uncertain(
+    text: str,
+    resolved: list[Detection],
+    gliner_model,
+    gliner_threshold: float,
+    uncertain_collector: list[str],
+) -> None:
+    """Warstwa GLiNER (patrz `app/pipeline/gliner_layer.py` - zasada
+    bezpieczeństwa nienaruszalna, opisana tam w docstringu modułu): dopisuje
+    do `uncertain_collector` WYŁĄCZNIE te trafienia GLiNER, które nie
+    pokrywają się z żadną już zaakceptowaną (regex+checksum/NER) detekcją -
+    te zawsze wygrywają i GLiNER nigdy ich nie duplikuje. Trafienia GLiNER
+    NIGDY nie trafiają do `resolve()`/`Replacement` - błąd sieci neuronowej
+    bez per-span review człowieka to nieakceptowalne ryzyko wycieku danych
+    klienta kancelarii."""
+    covered = [(d.start, d.end) for d in resolved]
+    try:
+        candidates = gliner_layer.find_gliner_candidates(
+            text, gliner_model, threshold=gliner_threshold
+        )
+    except gliner_layer.GlinerUnavailableError as exc:
+        # Model już był raz wczytany poprawnie (patrz app/main.py) - błąd tutaj
+        # dotyczy tylko tego jednego bloku tekstu, nie całego dokumentu.
+        uncertain_collector.append(f"[GLiNER] Błąd warstwy GLiNER dla tego fragmentu: {exc}")
+        return
+
+    for candidate in candidates:
+        if any(c_start < candidate.end and candidate.start < c_end for c_start, c_end in covered):
+            continue
+        uncertain_collector.append(
+            f"[GLiNER] {candidate.label}: \"{candidate.text}\" "
+            f"(pewność {candidate.score:.0%}) - sprawdź ręcznie w oryginale."
+        )
+
+
 def detect_in_text(
     text: str,
     registry: IdentityRegistry,
     nlp=None,
     potentially_missed_collector: list[str] | None = None,
     uncertain_collector: list[str] | None = None,
+    gliner_model=None,
+    gliner_threshold: float = 0.5,
 ) -> list[Replacement]:
     """Uruchamia wszystkie warstwy detekcji na pojedynczym bloku tekstu i zwraca
     listę podmian po scaleniu nakładających się span-ów i przydzieleniu etykiet
@@ -281,6 +318,9 @@ def detect_in_text(
     detections += _literal_rescan(text, known_names, existing_spans)
 
     resolved = resolve(detections)
+
+    if gliner_model is not None and uncertain_collector is not None:
+        _append_gliner_uncertain(text, resolved, gliner_model, gliner_threshold, uncertain_collector)
 
     if potentially_missed_collector is not None:
         potentially_missed_collector.extend(find_potentially_missed(text, resolved))
