@@ -1,0 +1,41 @@
+lxml>=5.0
+python-docx>=1.1
+pypdfium2>=4.30
+pytesseract>=0.3.10
+Pillow>=10.0
+# Używany bezpośrednio w app/pipeline/ocr.py (deskew metodą profilu projekcji,
+# próg Otsu przy binaryzacji) - dotąd był tylko tranzytywną zależnością spaCy,
+# deklarujemy jawnie bo teraz jest bezpośrednio importowany. Nie dodajemy
+# OpenCV: powyższe da się policzyć samym numpy, bez dużej zależności binarnej.
+numpy>=1.24
+spacy>=3.7
+# spacy.cli importuje click bezposrednio (spacy/cli/_util.py), ale nie
+# deklaruje go jako wlasna zaleznosc - polega na tym, ze typer go ciagnie
+# tranzytywnie. Nowsze wydania typer (>=0.27) przestaly wymagac click,
+# wiec bez jawnego wpisu `pip install -r requirements.txt` wywala sie
+# ModuleNotFoundError: No module named 'click' (zaobserwowane w CI 03.08.2026).
+click>=8.0
+# Model NER (nie jest na PyPI pod prostą nazwą, pobierany bezpośrednio z GitHub Releases)
+pl_core_news_md @ https://github.com/explosion/spacy-models/releases/download/pl_core_news_md-3.8.0/pl_core_news_md-3.8.0-py3-none-any.whl
+odfpy>=1.4
+customtkinter>=5.2
+# Przeciągnij-i-upuść plików w kolejce GUI. Podmienia metody na poziomie
+# tkinter.BaseWidget przy imporcie - działa z CTkFrame bez specjalnej klasy
+# okna głównego, wystarczy TkinterDnD._require(root) raz na start.
+tkinterdnd2>=0.4.2
+
+# dev/test only
+pytest>=8.0
+fpdf2>=2.7
+
+# Warstwa GLiNER (patrz app/pipeline/gliner_layer.py) - AppConfig.gliner_enabled
+# jest domyślnie WŁĄCZONE od Fazy 5 (23.09.2026), więc te pakiety muszą być
+# zainstalowane domyślnie. `gliner` ciągnie za sobą `torch`+`transformers`
+# (duży, ale nieunikniony przy realnym modelu NER). Jeśli plik modelu ONNX pod
+# AppConfig.gliner.model_path nie istnieje (np. świeża instalacja, model
+# jeszcze nie pobrany przyciskiem "Pobierz model GLiNER" -
+# `gliner_layer.download_gliner_model()`) - GlinerUnavailableError jest
+# łapane jako ostrzeżenie w app/main.py, nie crash - te pakiety same nie
+# wystarczą, potrzebny jest jeszcze plik modelu.
+gliner
+onnxruntime

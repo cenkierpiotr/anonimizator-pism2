@@ -1,0 +1,218 @@
+name: Build Windows installer
+
+# Dlaczego tylko push do glownej galezi + workflow_dispatch, NIE kazdy PR:
+# ten build jest kosztowny (pobranie/cache modelu spaCy ~40-90MB, portable
+# Tesseract, kompilacja PyInstaller one-dir + Inno Setup) i nie jest potrzebny
+# do samej oceny poprawnosci kodu w PR - do tego wystarcza szybkie testy
+# jednostkowe (osobny, tanszy workflow CI, poza zakresem tego pliku). Instalator
+# Windows ma sens generowac dopiero gdy zmiana trafia na glowna galaz, plus na
+# zadanie recznie (workflow_dispatch) do testowania samego procesu buildu bez
+# czekania na push.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Brak podpisu kodu w tym workflow (patrz build/anonimizator.spec, sekcja
+# TODO w EXE(...) - certyfikat OV/EV to Faza 5, swiadomie odlozona). Instalator
+# wyprodukowany tutaj jest NIEPODPISANY: przy pierwszym uruchomieniu na
+# komputerze uzytkownika SmartScreen niemal na pewno pokaze ostrzezenie
+# "Windows chronil Twoj komputer", a niektore antywirusy moga falszywie
+# zaflagowac plik (PyInstaller jest w tym notorycznie czesty). To oczekiwane
+# do czasu zakupu i wpiecia certyfikatu - NIE probowac obchodzic tutaj.
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ustaw Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Cache modelu spaCy + vendorowanego Tesseract/GLiNER/LibreOffice
+        id: cache-heavy-assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            resources/tessdata
+            build/vendor/tesseract
+            build/vendor/gliner_model
+            build/vendor/libreoffice
+            ~/AppData/Local/pip/Cache
+          # Klucz zalezny od requirements.txt (wersja/URL modelu spaCy moze
+          # sie zmienic) i od samego spec-a (zmiana sciezek vendoringu).
+          key: windows-heavy-assets-${{ hashFiles('requirements.txt', 'build/anonimizator.spec') }}
+
+      - name: Zainstaluj zaleznosci Python (requirements.txt + PyInstaller)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Sprawdz obecnosc modelu spaCy pl_core_news_md
+        run: |
+          python -c "import pl_core_news_md; print('model OK:', pl_core_news_md.__file__)"
+
+      - name: Zainstaluj Tesseract OCR (Chocolatey) - binarka + dane dla testow i buildu
+        run: |
+          choco install tesseract -y --no-progress
+          # Chocolatey dodaje katalog instalacji do PATH systemowego, ale
+          # bieżący proces GitHub Actions go jeszcze nie widzi - dopisujemy
+          # jawnie do $GITHUB_PATH na potrzeby kolejnych krokow (pytest, itd.).
+          $tesseractDir = "C:\Program Files\Tesseract-OCR"
+          echo "$tesseractDir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Pobierz brakujace dane jezykowe Tesseract (pol/eng) do resources/tessdata
+        # resources/tessdata/{pol,eng}.traineddata to zasoby WLASNE aplikacji
+        # (bundlowane per plan), niezalezne od tego, co Chocolatey wrzucil do
+        # swojego katalogu instalacyjnego. Jesli juz sa w repo (dodane przez
+        # inny etap prac) - nic nie nadpisujemy.
+        run: |
+          New-Item -ItemType Directory -Force -Path resources/tessdata | Out-Null
+          $files = @{
+            "pol" = "resources/tessdata/pol.traineddata"
+            "eng" = "resources/tessdata/eng.traineddata"
+          }
+          foreach ($lang in $files.Keys) {
+            $dest = $files[$lang]
+            if (Test-Path $dest) {
+              Write-Host "Juz istnieje: $dest - pomijam pobieranie."
+            } else {
+              $url = "https://github.com/tesseract-ocr/tessdata/raw/main/$lang.traineddata"
+              Write-Host "Pobieram $url -> $dest"
+              Invoke-WebRequest -Uri $url -OutFile $dest
+            }
+          }
+
+      - name: Vendoruj portable Tesseract dla PyInstaller (binarka + DLL-e)
+        # build/anonimizator.spec bundluje zawartosc build/vendor/tesseract/
+        # jesli istnieje (patrz komentarz "_tesseract_vendor_dir" w spec-u).
+        # Kopiujemy caly katalog instalacji Chocolatey (tesseract.exe + DLL-e +
+        # jego domyslny tessdata), zeby aplikacja miala dzialajacy silnik OCR
+        # bez zadnej preinstalowanej zaleznosci na komputerze uzytkownika.
+        run: |
+          $src = "C:\Program Files\Tesseract-OCR"
+          $dst = "build/vendor/tesseract"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          if (Test-Path $src) {
+            Copy-Item -Path "$src\*" -Destination $dst -Recurse -Force
+            Write-Host "Vendorowano Tesseract z $src do $dst"
+          } else {
+            Write-Warning "Nie znaleziono instalacji Tesseract pod $src - build bedzie bez dzialajacego OCR."
+          }
+
+      - name: Uruchom testy (pytest)
+        # Zaden test w tym repo nie ma markera skipif dla braku Tesseract/OCR
+        # (sprawdzone: tests/test_ocr.py wola prawdziwy `pytesseract`, a testy
+        # LibreOffice/soffice sa w pelni mockowane przez monkeypatch, wiec nie
+        # wymagaja realnej binarki soffice). Tesseract jest juz zainstalowany
+        # i na PATH (krok wyzej) zanim odpalimy pytest, wiec test_ocr.py
+        # powinien przejsc tak samo jak na Linuksie.
+        run: |
+          pytest -q
+
+      - name: Pobierz model GLiNER (authenticated gh release download, repo prywatne)
+        # Repo jest PRYWATNE - anonimowy HTTP GET na browser_download_url
+        # (jak w app/pipeline/gliner_layer.py::download_gliner_model()) zwraca
+        # 404 nieautoryzowanemu klientowi (zweryfikowane curl -I na zywo).
+        # Authenticated `gh release download` (ten sam GH_TOKEN co krok
+        # publikacji na koncu tego workflow) DZIALA na prywatnym repo -
+        # pobieramy tu ten sam artefakt z powrotem, zeby zvendorowac go
+        # build-time do instalatora, bez publikowania go gdziekolwiek
+        # publicznie. build/anonimizator.spec bundluje zawartosc
+        # build/vendor/gliner_model/ jesli istnieje (patrz komentarz
+        # "_gliner_model_vendor_dir" w spec-u).
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "gliner-anonpl-300m-onnx-v1"
+          $dlDir = "build/vendor/_gliner_dl"
+          $dstDir = "build/vendor/gliner_model"
+          New-Item -ItemType Directory -Force -Path $dlDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
+          gh release view $tag --repo ${{ github.repository }} *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release download $tag --repo ${{ github.repository }} --dir $dlDir --clobber --pattern "anonPL-300M-onnx.zip"
+            Expand-Archive -Path "$dlDir/anonPL-300M-onnx.zip" -DestinationPath $dstDir -Force
+            Write-Host "Zvendorowano model GLiNER do $dstDir"
+          } else {
+            Write-Warning "Brak Release '$tag' - build bedzie bez zbundlowanego modelu GLiNER (fallback: download_gliner_model() w runtime)."
+          }
+
+      - name: Zainstaluj LibreOffice (Chocolatey) i vendoruj dla PyInstaller
+        # UWAGA rozmiaru: pelny LibreOffice (Writer+Calc+Impress+...) to
+        # kilkaset MB - swiadomie akceptowany koszt rozmiaru instalatora
+        # (decyzja uzytkownika 26.09.2026, patrz "1 zbundluj cala paczke razem
+        # z libre"). Chocolatey nie oferuje granularnej instalacji tylko
+        # Writer, wiec nie probujemy "odchudzac" wyboru modulow.
+        # NAZWA PAKIETU `libreoffice-still` NIE ZOSTALA jeszcze zweryfikowana
+        # na zywo na Windows (brak dostepu do prawdziwego runnera w tej
+        # sesji) - do potwierdzenia przy pierwszym realnym CI runie
+        # (`choco search libreoffice` jesli ta nazwa zawiedzie).
+        run: |
+          choco install libreoffice-still -y --no-progress
+          $src = "C:\Program Files\LibreOffice"
+          $dst = "build/vendor/libreoffice"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          if (Test-Path $src) {
+            Copy-Item -Path "$src\*" -Destination $dst -Recurse -Force
+            Write-Host "Vendorowano LibreOffice z $src do $dst"
+          } else {
+            Write-Warning "Nie znaleziono instalacji LibreOffice pod $src - build bedzie bez zbundlowanego LibreOffice (fallback: download_libreoffice() w runtime albo systemowy soffice)."
+          }
+
+      - name: Zbuduj aplikacje (PyInstaller, one-dir)
+        run: |
+          pyinstaller build/anonimizator.spec --noconfirm --clean
+
+      - name: Spakuj wersje portable (ZIP katalogu one-dir, bez instalatora)
+        # Ten sam bundle co idzie do instalatora (dist/AnonimizatorPism/),
+        # spakowany jako ZIP dla osob ktore wola rozpakowac i uruchomic
+        # bez instalacji/uprawnien administratora zamiast Inno Setup.
+        run: |
+          Compress-Archive -Path "dist/AnonimizatorPism" -DestinationPath "AnonimizatorDokumentow-portable-0.4.0.zip"
+
+      - name: Zainstaluj Inno Setup (Chocolatey)
+        run: |
+          choco install innosetup -y --no-progress
+          $innoDir = "C:\Program Files (x86)\Inno Setup 6"
+          echo "$innoDir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Skompiluj instalator (Inno Setup)
+        run: |
+          ISCC.exe build\installer.iss
+
+      - name: Publikuj instalator + wersje portable bezposrednio do GitHub Release
+        # Celowo NIE actions/upload-artifact: prywatne repo dzieli z kontem
+        # twardy limit 0.5GB na Actions storage (artefakty + Packages) - raz
+        # wyczerpany, blokuje KAZDY kolejny upload na koncie, a przeliczenie
+        # zajmuje udokumentowane 6-12h nawet po skasowaniu danych (zdarzylo
+        # sie realnie w tym repo). GitHub Release assets to zupelnie inny,
+        # znacznie wiekszy limit (do 2GB/plik) - wgrywamy tam wprost z joba,
+        # pomijajac Actions storage w ogole. Wymaga, zeby tag wersji (np.
+        # v0.3.0) i odpowiadajacy mu Release juz istnialy (tworzone recznie
+        # przy wydaniu) - jesli nie istnieja, krok jest pomijany bez bledu,
+        # zeby zwykly build z push do main (bez tagu) dalej przechodzil.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "0.4.0"
+          $tag = "v$version"
+          gh release view $tag --repo ${{ github.repository }} *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag "build/Output/*.exe" "AnonimizatorDokumentow-portable-$version.zip" --repo ${{ github.repository }} --clobber
+          } else {
+            Write-Host "Brak Release $tag - pomijam publikacje artefaktow (zwykly build bez tagu wydania)."
+          }
