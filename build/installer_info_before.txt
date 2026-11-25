@@ -1,0 +1,18 @@
+Anonimizator Pism - informacja przed instalacja
+
+Ta aplikacja dziala w calosci lokalnie (offline) na Twoim komputerze -
+dokumenty, ktore anonimizujesz, nigdy nie sa wysylane przez siec.
+
+Jeden wyjatek: obsluga starych plikow .doc wymaga dodatkowego komponentu
+(LibreOffice, ok. 300 MB), ktory NIE jest czescia tego instalatora. Zostaniesz
+o to zapytany dopiero w momencie, gdy otworzysz plik .doc - i tylko wtedy
+aplikacja polaczy sie z internetem, zeby pobrac ten komponent jeden raz
+(pozniej dziala juz lokalnie, z pamieci podrecznej). Pliki .docx, .odt, .txt,
+.pdf oraz obrazy skanow dzialaja od razu, bez tego komponentu i bez internetu.
+
+Jesli pracujesz na komputerze bez dostepu do internetu: obsluga .doc nie
+zadziala automatycznie, ale mozesz wskazac reczne juz zainstalowany LibreOffice
+na dysku w ustawieniach aplikacji (patrz README).
+
+Anonimizacja jest nieodwracalna - aplikacja nie zapisuje na dysku zadnego
+klucza pozwalajacego odtworzyc oryginalne dane.

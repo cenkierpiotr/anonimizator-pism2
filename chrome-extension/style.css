@@ -1,0 +1,125 @@
+/* Styl modala z pytaniem "Czy chcesz zanonimizować?" */
+.anonim-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 99999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.anonim-modal-card {
+  background: #ffffff;
+  color: #1e293b;
+  width: 90%;
+  max-width: 480px;
+  border-radius: 14px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  padding: 24px;
+  animation: anonim-fade-in 0.15s ease-out;
+}
+
+@keyframes anonim-fade-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.anonim-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.anonim-modal-icon {
+  font-size: 26px;
+}
+
+.anonim-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.anonim-modal-question {
+  font-size: 16px;
+  color: #0284c7;
+  margin: 8px 0 4px 0;
+}
+
+.anonim-modal-subtext {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.4;
+  margin-bottom: 14px;
+}
+
+.anonim-modal-preview {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+  max-height: 100px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: #334155;
+  margin-bottom: 20px;
+  word-break: break-all;
+}
+
+.anonim-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.anonim-btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+}
+
+.anonim-btn-secondary {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.anonim-btn-secondary:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.anonim-btn-primary {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.anonim-btn-primary:hover {
+  background: #0369a1;
+}
+
+.anonim-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #0f172a;
+  color: #ffffff;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+  z-index: 9999999;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  animation: anonim-fade-in 0.2s ease-out;
+}

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 280px;
+      padding: 16px;
+      font-family: sans-serif;
+      margin: 0;
+      color: #1e293b;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .header img { width: 24px; height: 24px; }
+    .title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      padding: 8px;
+      border-radius: 6px;
+      background: #f0fdf4;
+      color: #15803d;
+      margin-bottom: 12px;
+    }
+    .status.err {
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+    .desc {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .row label { cursor: pointer; }
+    .btn {
+      font-size: 12px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      cursor: pointer;
+    }
+    .btn:hover { background: #e2e8f0; }
+    .version {
+      font-size: 11px;
+      color: #94a3b8;
+      text-align: center;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon48.png" alt="">
+    <div class="title">Anonimizator &amp; RODO</div>
+  </div>
+  <div class="status" id="status-box">
+    <span style="font-size: 14px;">●</span>
+    <span id="status-text">Sprawdzanie serwera...</span>
+  </div>
+  <div class="desc">
+    Wtyczka automatycznie przechwytuje wklejanie tekstu i przeciąganie plików w Claude, ChatGPT oraz Gemini, pytając o zgodę na anonimizację.
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="auto-anon"> Zawsze anonimizuj bez pytania</label>
+    <button class="btn" id="recheck">Sprawdź ponownie</button>
+  </div>
+  <div class="version" id="ver"></div>
+  <!-- MV3: skrypt inline w extension pages jest zabroniony - osobny plik popup.js -->
+  <script src="popup.js"></script>
+</body>
+</html>
