@@ -122,6 +122,23 @@ jobs:
           version=$(grep -oP '(?<=#define MyAppVersion ")[^"]+' build/installer.iss)
           tar -czf "AnonimizatorDokumentow-portable-linux-$version.tar.gz" -C dist AnonimizatorPism
 
+      - name: Spakuj wtyczke Chrome RODO Guard (ZIP)
+        # Wersja wtyczki z manifest.json (niezalezna od wersji aplikacji).
+        # ZIP zawiera pliki bez katalogu nadrzednego - po rozpakowaniu
+        # gotowy katalog do chrome://extensions "Load unpacked".
+        run: |
+          python3 - <<'EOF'
+          import re, zipfile, os
+          os.chdir('chrome-extension')
+          version = re.search(r'"version": "([^"]+)"', open('manifest.json').read()).group(1)
+          with zipfile.ZipFile(f'../rodo-guard-chrome-v{version}.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+              for name in ['manifest.json', 'content.js', 'popup.html', 'popup.js', 'style.css']:
+                  z.write(name)
+              for icon in sorted(os.listdir('icons')):
+                  if icon.endswith('.png'):
+                      z.write(os.path.join('icons', icon))
+          EOF
+
       - name: Publikuj wersje portable bezposrednio do GitHub Release
         # Patrz komentarz w build-windows.yml - to samo uzasadnienie:
         # omijamy limit 0.5GB Actions storage, wgrywajac wprost do Release.
@@ -130,9 +147,10 @@ jobs:
         run: |
           set -euo pipefail
           version=$(grep -oP '(?<=#define MyAppVersion ")[^"]+' build/installer.iss)
+          ext_version=$(grep -oP '(?<="version": ")[^"]+' chrome-extension/manifest.json)
           tag="v$version"
           if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$tag" "AnonimizatorDokumentow-portable-linux-$version.tar.gz" --repo "${{ github.repository }}" --clobber
+            gh release upload "$tag" "AnonimizatorDokumentow-portable-linux-$version.tar.gz" "rodo-guard-chrome-v$ext_version.zip" --repo "${{ github.repository }}" --clobber
           else
             echo "Brak Release $tag - pomijam publikacje artefaktu (zwykly build bez tagu wydania)."
           fi

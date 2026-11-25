@@ -334,9 +334,12 @@ wyłącznie z lokalnym daemonem pod 127.0.0.1:4578, nigdy z internetem.
 
 **Instalacja wtyczki**
 
-1. Włącz tryb developera w chrome://extensions.
-2. Wybierz "Load unpacked" i wskaż katalog chrome-extension/ z repozytorium.
-3. Uruchom daemona. Bez niego wtyczka nie działa.
+1. Pobierz z zakładki [Releases](../../releases) plik `rodo-guard-chrome-<wersja>.zip`
+   i rozpakuj w dowolnym katalogu (albo użyj katalogu `chrome-extension/`
+   bezpośrednio z repozytorium — zawartość identyczna).
+2. Włącz tryb developera w chrome://extensions.
+3. Wybierz "Load unpacked" i wskaż rozpakowany katalog.
+4. Uruchom daemona. Bez niego wtyczka nie działa.
 
 **Uruchamianie daemona**
 
