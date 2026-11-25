@@ -240,7 +240,8 @@ jobs:
         # spakowany jako ZIP dla osob ktore wola rozpakowac i uruchomic
         # bez instalacji/uprawnien administratora zamiast Inno Setup.
         run: |
-          Compress-Archive -Path "dist/AnonimizatorPism" -DestinationPath "AnonimizatorDokumentow-portable-0.4.0.zip"
+          $version = (Select-String -Path build/installer.iss -Pattern '#define MyAppVersion "([^"]+)"').Matches[0].Groups[1].Value
+          Compress-Archive -Path "dist/AnonimizatorPism" -DestinationPath "AnonimizatorDokumentow-portable-$version.zip"
 
       - name: Zainstaluj Inno Setup (Chocolatey)
         run: |
@@ -266,7 +267,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = "0.4.0"
+          $version = (Select-String -Path build/installer.iss -Pattern '#define MyAppVersion "([^"]+)"').Matches[0].Groups[1].Value
           $tag = "v$version"
           gh release view $tag --repo ${{ github.repository }} *> $null
           $releaseExists = ($LASTEXITCODE -eq 0)
