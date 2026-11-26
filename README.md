@@ -1,10 +1,27 @@
 # Anonimizator Dokumentów
 
-Lokalna, w pełni offline aplikacja (Windows i Linux) do anonimizacji dokumentów (ze
-szczególnym uwzględnieniem pism prawniczych — pozwów, umów, aktów notarialnych,
-wyroków — ale nie tylko). Przyjmuje dowolny format wejściowy (PDF z tekstem,
-PDF skan, DOCX, DOC, ODT, TXT, obraz skanu) i zwraca `.docx` z zanonimizowanymi
-danymi wrażliwymi, zachowując czytelność i kontekst dokumentu.
+> **Pismo z danymi klienta + czat AI = wyciek danych.** Ta aplikacja to ucina.
+
+**Problem:** Prawnik wkleja pismo z nazwiskiem, numerem PESEL, adresem czy sygnaturą sprawy do ChatGPT, Claude lub Gemini, żeby szybko je streścić lub przeanalizować. Każde takie wklejenie to przekazanie danych osobowych trzeciej stronie, często zagranicznej, i realne ryzyko RODO, naruszenia tajemnicy zawodowej oraz utraty zaufania klientów.
+
+**Rozwiązanie:** Anonimizator Dokumentów działa w 100% lokalnie i offline, więc dane nie opuszczają komputera. Automatycznie wykrywa i podmienia polskie dane osobowe w DOCX, PDF, skanach OCR oraz plikach graficznych, a wtyczka RODO Guard przechwytuje wklejanie na czatach AI i proponuje anonimizację. Dostępny jest tryb desktopowy z podglądem kolorowych adnotacji oraz wtyczka z lokalnym daemonem do pracy w tle.
+
+- **100% offline:** dokumenty i dane klientów nie opuszczają komputera
+- **Automatyczna detekcja polskich danych:** osoby, PESEL, adresy, NIP, daty, kwoty, sygnatury spraw i dane firmy
+- **Obsługa DOCX, PDF, skanów OCR oraz JPG, PNG i TIFF** z podglądem kolorowych adnotacji
+- **Wtyczka RODO Guard do ChatGPT, Claude i Gemini** oraz lokalny daemon HTTP do integracji
+
+![Zrzut ekranu: główne okno aplikacji](docs/screenshots/main-window.png)
+
+![Zrzut ekranu: ekran weryfikacji przed zapisem](docs/screenshots/review-window.png)
+
+## Jak to działa
+
+![Schemat: jak działa anonimizacja w 100% lokalnie](docs/diagrams/pipeline.svg)
+
+Schemat działania wtyczki podczas pisania na czacie AI:
+
+![Schemat: wtyczka RODO Guard przed wysłaniem na czat AI](docs/diagrams/rodo-guard.svg)
 
 Anonimizacja jest **nieodwracalna**: numeracja etykiet (`[Osoba 1]`, `[numer telefonu 2]`)
 żyje wyłącznie w pamięci procesu na czas przetwarzania jednego pliku i nigdy nie jest

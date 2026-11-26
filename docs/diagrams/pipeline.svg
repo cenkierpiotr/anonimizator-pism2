@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 480" width="920" height="480" role="img" aria-label="Schemat działania anonimizatora: dokument wejściowy, lokalne przetwarzanie, zanonimizowany wynik">
+  <title>Jak to działa: anonimizacja w 100% lokalnie</title>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L0,6 L7,3 z" fill="#2C6266"/>
+    </marker>
+  </defs>
+  <style>
+    text { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; fill: #1F2A2A; }
+    .title { font-size: 17px; font-weight: 600; }
+    .step-label { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; fill: #3A8187; }
+    .step-label-ok { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; fill: #1E7A46; }
+    .col-header { font-size: 16px; font-weight: 600; }
+    .item { font-size: 13px; }
+    .item-sub { font-size: 12px; fill: #5B6666; }
+    .tile-title { font-size: 13px; font-weight: 600; text-anchor: middle; }
+    .tile-caption { font-size: 11px; fill: #5B6666; text-anchor: middle; }
+    .badge-text { font-size: 12px; font-weight: 600; fill: #1E7A46; text-anchor: middle; }
+    .footer-text { font-size: 13px; fill: #2C6266; }
+    .box { fill: #FFFFFF; stroke: #DCE3E3; stroke-width: 1; }
+  </style>
+
+  <rect width="920" height="480" fill="#FFFFFF"/>
+
+  <!-- Tytul -->
+  <text x="460" y="36" text-anchor="middle" class="title">Jak to działa: anonimizacja w 100% lokalnie</text>
+
+  <!-- KROK 1: dokument wejsciowy -->
+  <g>
+    <rect x="30" y="70" width="210" height="290" rx="10" fill="#F4F6F6" stroke="#DCE3E3"/>
+    <text x="48" y="95" class="step-label">KROK 1</text>
+    <text x="48" y="120" class="col-header">Dokument wejściowy</text>
+    <text x="48" y="158" class="item">&#8226; DOCX / DOC / ODT</text>
+    <text x="48" y="183" class="item">&#8226; PDF (tekst lub skan)</text>
+    <text x="48" y="208" class="item">&#8226; Zdjęcie / skan</text>
+    <text x="60" y="226" class="item-sub">(JPG, PNG, TIFF)</text>
+  </g>
+
+  <!-- KROK 2: anonimizator -->
+  <g>
+    <rect x="300" y="70" width="320" height="290" rx="10" fill="#FFFFFF" stroke="#3A8187" stroke-width="2"/>
+    <text x="460" y="94" text-anchor="middle" class="step-label">KROK 2</text>
+    <text x="460" y="118" text-anchor="middle" class="col-header">Anonimizator Dokumentów</text>
+    <rect x="372" y="126" width="176" height="26" rx="13" fill="#E8F5EC"/>
+    <text x="460" y="143" class="badge-text">100% lokalnie, offline</text>
+
+    <rect x="316" y="164" width="288" height="50" rx="8" fill="#E4F0F0" stroke="#DCE3E3"/>
+    <text x="460" y="185" class="tile-title">OCR</text>
+    <text x="460" y="202" class="tile-caption">Tesseract (dla skanów)</text>
+
+    <line x1="460" y1="216" x2="460" y2="226" stroke="#2C6266" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="316" y="230" width="288" height="66" rx="8" fill="#E4F0F0" stroke="#DCE3E3"/>
+    <text x="460" y="252" class="tile-title">Detekcja danych</text>
+    <text x="460" y="268" class="tile-caption">GLiNER anonPL-300M + wzorce:</text>
+    <text x="460" y="283" class="tile-caption">PESEL, NIP, REGON, IBAN, kwoty, sygnatury</text>
+
+    <line x1="460" y1="298" x2="460" y2="308" stroke="#2C6266" stroke-width="2" marker-end="url(#arrow)"/>
+
+    <rect x="316" y="312" width="288" height="42" rx="8" fill="#E4F0F0" stroke="#DCE3E3"/>
+    <text x="460" y="331" class="tile-title">Podmiana danych</text>
+    <text x="460" y="347" class="tile-caption">[Osoba 1], [PESEL 1], [adres 1]...</text>
+  </g>
+
+  <!-- KROK 3: wynik -->
+  <g>
+    <rect x="680" y="70" width="210" height="290" rx="10" fill="#E8F5EC" stroke="#DCE3E3"/>
+    <text x="698" y="95" class="step-label-ok">KROK 3</text>
+    <text x="698" y="120" class="col-header">Wynik</text>
+    <text x="698" y="158" class="item">&#8226; Zanonimizowany DOCX</text>
+    <text x="698" y="183" class="item">&#8226; Ekran weryfikacji</text>
+    <text x="710" y="201" class="item-sub">przed zapisem</text>
+    <text x="698" y="226" class="item">&#8226; Ostrzeżenia: pominięte</text>
+    <text x="710" y="244" class="item-sub">fragmenty do sprawdzenia</text>
+  </g>
+
+  <!-- Strzalki miedzy kolumnami -->
+  <line x1="242" y1="215" x2="294" y2="215" stroke="#2C6266" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="626" y1="215" x2="678" y2="215" stroke="#2C6266" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Stopka: kladka -->
+  <g transform="translate(119, 408)">
+    <path d="M12,14 V9 a7,7 0 0 1 14,0 V14" stroke="#2C6266" stroke-width="2.5" fill="none"/>
+    <rect x="3" y="14" width="32" height="22" rx="4" fill="#2C6266"/>
+    <circle cx="19" cy="22" r="2.5" fill="#E4F0F0"/>
+    <rect x="17.5" y="24" width="3" height="6" rx="1.5" fill="#E4F0F0"/>
+  </g>
+  <text x="171" y="431" class="footer-text">Dokument nigdy nie opuszcza Twojego komputera. Bez internetu, bez chmury, bez telemetrii.</text>
+</svg>
