@@ -312,7 +312,7 @@ Debian, Fedora, Arch i pochodne) powinien działać bez dodatkowych zależności
 
 ## Zależności i licencje
 
-Ten projekt jest na licencji **[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)**
+Ten projekt jest na licencji **[MIT](LICENSE)** — darmowy do użytku komercyjnego i niekomercyjnego, z zachowaniem noty copyright.
 — bezpłatne wykorzystanie dozwolone dla celów niekomercyjnych (osobistych,
 edukacyjnych, badawczych, hobbystycznych, organizacji nonprofit); użycie
 komercyjne wymaga osobnej zgody. Pełny tekst — patrz [LICENSE](LICENSE). Pełna lista
@@ -394,3 +394,32 @@ Publiczna wersja aplikacji (kod, instalatory do pobrania) jest dostępna w
 repozytorium [anonimizator-pism2](https://github.com/cenkierpiotr/anonimizator-pism2).
 Zgłoszenia błędów i propozycje — przez zakładkę Issues w repozytorium
 anonimizator-pism2.
+---
+
+<!-- HUB-AUTO-STATUS:START -->
+## Aktualny stan i ostatnie zmiany (auto-sync)
+
+- **Ostatnia aktualizacja:** 2026-11-26T19:04:34+01:00 (`claude` / `opus`)
+- **Szczegóły sesji:** [`.ai/STATUS.md`](.ai/STATUS.md) | [`.ai/LOG.md`](.ai/LOG.md) | [`.ai/DECISIONS.md`](.ai/DECISIONS.md)
+
+### Cel projektu
+Anonimizator pism urzędowych (branch: `main`) — detekcja i maskowanie danych wrażliwych w plikach .docx.
+
+### Na czym skończyliśmy
+- 5 napraw jakości detekcji wdrożonych i zcommitowanych (a2876de, main): separator bloków, phone 5-8, WA-1423, `_is_sentence_start`, docProps.
+- 282/282 testów przechodzi; git czysto.
+- Demo docx z walidnymi checksumami (PESEL/NIP/REGON/dowód/NRB) — 28 encji, missed-panel: 1 sensowna pozycja.
+- Push na origin (prywatne) + sync pism2 (publiczne, 7ec61dd).
+- **CI pism2**: Linux bundle ✅ **success** (5 min 41 s). Windows installer ⏳ w toku (~11 min pozostało, monitorowane w tle).
+
+### Następne kroki
+- Domknąć CI Windows (installer) — jeśli zielone, faza domknięta.
+- Do decyzji użytkownika: release v0.4.2 z pakietem napraw detekcji.
+
+### Ostatnie zmiany
+- [2026-11-26 11:20 | claude/opus-5.5 | ci: domknięte po pushu README] Runy 45806166813 (Windows, 17m52s) i 45806166724 (Linux, 8m33s) oba success; release v0.4.1 nadal kompletny (4 artefakty, wersje bez zmian). Publikacja README na pism2 w pełni domknięta.
+- [2026-11-26 11:49 | claude/glm-5.3 | RECOVERY:watchdog-idle via codix/deepseek-v4.1-flash] Analiza zrzutu review-window.png z pism2: OCR potwierdza jawne PESEL/NIP/serię dowodu w podglądzie mimo 24 wykrytych encji — sprawdzane detektory PESEL/NIP/dowód oraz rozjazd staging DOCX vs StagedResult.preview_text()
+- [2026-11-26 14:11 | claude/glm-5.3 | RECOVERY:PreCompact via codix/deepseek-v4.1-flash] Diagnoza zrzutu review-window.png: 4 bugi (szum atrybutów XML w missed-list, sklejone akapity → fałszywa Osoba, REGON łapany jako telefon, demo-doc z jawnym numerem wpisu); fix #1 wdrożony, fix #2 (separator międzyblokowy) w toku — zmiany w app/main.py i app/pipeline/docx_writer.py niezacommitowane.
+- [2026-11-26 14:02 | claude/glm-5.3 | RECOVERY:watchdog-idle via fallback/deterministic] Recovery (`watchdog-idle`, fallback deterministyczny): co dalej
+- [2026-11-26 14:47 | claude/glm-5.3 | RECOVERY:watchdog-idle via codix2/medium] watchdog-idle: CI pism2 Linux ✅ (5m41s), Windows w toku ~11 min — monitorowane w tle; git czysto, 282/282 testów, czekamy na zielone Windows.
+<!-- HUB-AUTO-STATUS:END -->
