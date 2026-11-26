@@ -18,7 +18,7 @@
 ; akceptowalne wobec priorytetu "zero tarcia przy instalacji".
 
 #define MyAppName "Anonimizator Pism"
-#define MyAppVersion "0.4.1"
+#define MyAppVersion "0.4.2"
 #define MyAppPublisher "Piotr Cenkier"
 #define MyAppURL "https://github.com/cenkierpiotr/anonimizator-pism2"
 #define MyAppExeName "AnonimizatorPism.exe"
