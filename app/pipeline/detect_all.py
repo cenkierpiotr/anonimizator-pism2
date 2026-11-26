@@ -88,17 +88,31 @@ _COMMON_CAPITALIZED_WORDS = frozenset(
         "rejonowy", "rejonowego", "rejonowym",
         "okręgowy", "okręgowego", "okręgowym",
         "apelacyjny", "apelacyjnego", "apelacyjnym",
+        # Typowe słowa z nagłówków paragrafów umów/pism (§ 1 Przedmiot umowy,
+        # § 2 Wynagrodzenie) — nie są danymi, a ich "wielka litera w środku
+        # bloku" to artefakt stylu nagłówka, nie sygnał pominiętej osoby.
+        "przedmiot", "przedmiotu", "przedmiotem",
+        "wynagrodzenie", "wynagrodzenia",
+        "postanowienia", "postanowień",
+        "załącznik", "załącznika", "załączniku",
+        "umowa", "umowy", "umowie", "umowę", "umową", "umowy.",
     }
 )
 
 
 def _is_sentence_start(text: str, pos: int) -> bool:
     i = pos - 1
-    while i >= 0 and text[i] in " \t\n\r":
+    # Zjadamy tylko POZIOME białe znaki (spacja/tab) — pionowe (\n, \r)
+    # zatrzymują skan, bo są same w sobie granicą bloku tekstu (akapit,
+    # komórka tabeli, osobna część XML). Wcześniejsza wersja zjadała też
+    # "\n\r" jako whitespace, więc warunek ".!?\n" poniżej nigdy nie widział
+    # newline — początek akapitu NIE był traktowany jako początek zdania i
+    # pierwsze słowa kolejnych bloków zalewały listę "potencjalnie pominięte".
+    while i >= 0 and text[i] in " \t":
         i -= 1
     if i < 0:
         return True
-    return text[i] in ".!?\n"
+    return text[i] in ".!?\n\r"
 
 
 def find_potentially_missed(text: str, resolved: list[Detection]) -> list[str]:

@@ -142,16 +142,18 @@ def _detect_fn_for(
     uncertain_detections: list[str] | None = None,
     gliner_model=None,
     gliner_threshold: float = 0.5,
+    collect_missed: bool = True,
+    collect_samples: bool = True,
 ) -> Callable[[str], list[tuple[int, int, str]]]:
     def _detect_fn(text: str) -> list[tuple[int, int, str]]:
-        if sample_texts is not None and text:
+        if collect_samples and sample_texts is not None and text:
             sample_texts.append(text)
         replacements: list[Replacement] = detect_in_text(
             text,
             registry,
             nlp=nlp,
-            potentially_missed_collector=potentially_missed,
-            uncertain_collector=uncertain_detections,
+            potentially_missed_collector=potentially_missed if collect_missed else None,
+            uncertain_collector=uncertain_detections if collect_missed else None,
             gliner_model=gliner_model,
             gliner_threshold=gliner_threshold,
         )
@@ -232,18 +234,52 @@ def process_to_staging(
         gliner_model=gliner_model,
         gliner_threshold=config.gliner.confidence_threshold,
     )
+    # Wariant "cichy" do skanowania WARTOŚCI atrybutów XML w .docx (patrz
+    # `docx_writer.apply_attribute_replacements`): te same detektory i ten
+    # sam rejestr tożsamości (spójna numeracja etykiet), ale BEZ kolektorów
+    # "potencjalnie pominięte"/"niepewne" i bez `sample_texts` — wartości
+    # atrybutów to niemal wyłącznie identyfikatory techniczne XML (bestFit,
+    # doNotCompress, Microsoft Macintosh Word...), a ich karmienie
+    # kolektorami zalewało ekran weryfikacji fałszywymi "pominiętymi"
+    # (realny błąd na dokumencie demo, 26.11.2026).
+    attribute_detect_fn = _detect_fn_for(
+        registry,
+        options.nlp,
+        sample_texts=None,
+        potentially_missed=None,
+        uncertain_detections=None,
+        gliner_model=gliner_model,
+        gliner_threshold=config.gliner.confidence_threshold,
+        collect_missed=False,
+        collect_samples=False,
+    )
+    # docProps/* (metadane): pełna detekcja i podmiany (dc:creator potrafi
+    # nieść nazwisko autora!), ale bez kolektorów — techniczne wartości
+    # metadanych (Microsoft Macintosh Word, Normal.dotm, Title) nie są treścią
+    # dokumentu i nie mogą zalewać panelu "potencjalnie pominięte".
+    metadata_detect_fn = _detect_fn_for(
+        registry,
+        options.nlp,
+        sample_texts=None,
+        potentially_missed=None,
+        uncertain_detections=None,
+        gliner_model=gliner_model,
+        gliner_threshold=config.gliner.confidence_threshold,
+        collect_missed=False,
+        collect_samples=False,
+    )
 
     staging_dir = Path(tempfile.mkdtemp(prefix=STAGING_DIR_PREFIX))
     try:
         tmp_output = staging_dir / "wynik.docx"
 
         if detection.format == DocumentFormat.DOCX:
-            docx_writer.process_docx(input_path, tmp_output, detect_fn)
+            docx_writer.process_docx(input_path, tmp_output, detect_fn, attribute_detect_fn, metadata_detect_fn)
 
         elif detection.format == DocumentFormat.DOC:
             converted = staging_dir / "przekonwertowany.docx"
             legacy_convert.convert_doc_to_docx(input_path, converted)
-            docx_writer.process_docx(converted, tmp_output, detect_fn)
+            docx_writer.process_docx(converted, tmp_output, detect_fn, attribute_detect_fn, metadata_detect_fn)
 
         elif detection.format == DocumentFormat.ODT:
             odt_output = staging_dir / "wynik.odt"

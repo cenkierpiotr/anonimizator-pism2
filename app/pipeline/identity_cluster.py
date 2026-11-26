@@ -39,7 +39,7 @@ CATEGORY_LABELS: dict[str, str] = {
     "passport": "paszport",
     "vehicle_vin": "VIN",
     "vehicle_plate": "numer rejestracyjny",
-    "npwz": "NPWZ",
+    "npwz": "numer PWZ / wpisu na listę izby",
     "case_number": "sygnatura akt",
     "notarial_act": "akt notarialny",
     "usc_act": "akt stanu cywilnego",

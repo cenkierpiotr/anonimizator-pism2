@@ -53,6 +53,18 @@ _TECHNICAL_ATTR_LOCALNAMES = frozenset(
 # wartości (np. rewizja "1" + data ISO doklejona wprost do kolejnej daty ISO
 # złożyły się w ciąg cyfr wyglądający jak numer telefonu - realny błąd
 # znaleziony testem e2e). Dlatego te części łączymy z separatorem.
+#
+# ULICA vs AKAPIT/TABELA w części przepływowej: złączenie bez separatora jest
+# potrzebne TYLKO między węzłami wewnątrz jednego akapitu (rozbity PESEL na
+# dwa runy). Ale kolejne AKAPITY (w:p) i komórki tabel (w:tc) to logicznie
+# osobne bloki tekstu — sklejenie ich bez separatora zlewa ostatnie słowo
+# jednego akapitu z pierwszym następnego w jeden token CamelCase, który NER
+# potrafi fałszywie uznać za nazwisko (realny błąd na dokumencie demo:
+# "usług prawnych" + "Zawarta" -> "prawnychZawarta" -> [Osoba 1]). Dlatego
+# między blokami strukturalne wstawiamy separator "\n" (jak w częściach
+# nieprzepływowych), a bez separatora łączymy tylko węzły w obrębie tego
+# samego bloku. Separator żyje TYLKO w part.text do detekcji — nigdy nie
+# trafia do wynikowego dokumentu (apply_replacements operuje na węzłach).
 _FLOW_CONTENT_PART_PREFIXES = (
     "word/document.xml",
     "word/header",
@@ -60,6 +72,16 @@ _FLOW_CONTENT_PART_PREFIXES = (
     "word/footnotes.xml",
     "word/endnotes.xml",
     "word/comments.xml",
+)
+
+# Elementy XML, które KOŃCZĄ blok tekstu (akapit/komórka) w części
+# przepływowej - po nich wstawiamy separator między blokami.
+_FLOW_BLOCK_BOUNDARY_TAGS = frozenset(
+    {
+        f"{{{W_NS}}}p",   # akapit (w:p)
+        f"{{{W_NS}}}tc",  # komórka tabeli (w:tc)
+        f"{{{W_NS}}}tr",  # wiersz tabeli (w:tr)
+    }
 )
 
 
@@ -101,35 +123,60 @@ def _iter_text_locations(elem: etree._Element) -> Iterable[tuple[etree._Element,
             yield (child, "tail")
 
 
+def _block_ancestor(elem: etree._Element) -> etree._Element | None:
+    """Najbliższy przodek będący granicą bloku tekstu (w:p/w:tc/w:tr) —
+    None gdy węzeł nie leży w żadnym bloku (patrz `_FLOW_BLOCK_BOUNDARY_TAGS`)."""
+    for anc in elem.iterancestors():
+        if anc.tag in _FLOW_BLOCK_BOUNDARY_TAGS:
+            return anc
+    return None
+
+
 def load_part_text(part_name: str, xml_bytes: bytes) -> PartText:
     """Parsuje jedną część XML i buduje złączony tekst z mapą offsetów.
 
-    W częściach "przepływowych" (patrz `_FLOW_CONTENT_PART_PREFIXES`) fragmenty
-    są łączone bez separatora, żeby wartość rozbita na sąsiednie węzły (różne
-    formatowanie w jednym akapicie) dalej tworzyła jeden ciągły tekst do
-    detekcji. W pozostałych częściach (metadane, style, .rels...) wstawiamy
-    separator między fragmentami, żeby dwie niepowiązane wartości nigdy się
+    W częściach "przepływowych" (patrz `_FLOW_CONTENT_PART_PREFIXES`) węzły
+    W RAMIENI JEDNEGO AKAPITU/komórki łączone są bez separatora, żeby wartość
+    rozbita na sąsiednie węzły (różne formatowanie w jednym akapicie) dalej
+    tworzyła jeden ciągły tekst do detekcji. Ale między kolejnymi blokami
+    (akapity w:p, komórki tabel w:tc, wiersze w:tr) wstawiany jest separator
+    "\\n" — ostatnie słowo jednego akapitu i pierwsze słowo następnego nigdy
+    nie mogą się skleić w jeden token (realny błąd NER: "prawnych" + "Zawarta"
+    -> "prawnychZawarta" -> fałszywa [Osoba 1]).
+
+    W pozostałych częściach (metadane, style, .rels...) wstawiamy separator
+    między WSZYSTKIMI fragmentami, żeby dwie niepowiązane wartości nigdy się
     przypadkowo nie skleiły w fałszywe dopasowanie."""
     parser = etree.XMLParser(remove_blank_text=False)
     tree = etree.fromstring(xml_bytes, parser=parser).getroottree()
     root = tree.getroot()
     flow = _is_flow_content_part(part_name)
-    separator = "" if flow else "\n"
 
     nodes: list[TextNode] = []
-    pieces: list[str] = []
+    text_pieces: list[str] = []
     offset = 0
+    prev_block: etree._Element | None = None
     for elem, attr in _iter_text_locations(root):
         content = getattr(elem, attr) or ""
         if content == "":
             continue
-        if pieces:
-            offset += len(separator)
+        block = _block_ancestor(elem)
+        if text_pieces:
+            if not flow:
+                sep = "\n"
+            else:
+                # W części przepływowej: bez separatora tylko między węzłami
+                # wewnątrz TEJ SAMEGO bloku (rozbite runy jednego akapitu).
+                # Nieznany blok (None) też rozdziela — bezpieczniej.
+                sep = "" if (block is not None and block is prev_block) else "\n"
+            text_pieces.append(sep)
+            offset += len(sep)
+        prev_block = block
         nodes.append(TextNode(element=elem, start=offset, end=offset + len(content), attr=attr))
-        pieces.append(content)
+        text_pieces.append(content)
         offset += len(content)
 
-    return PartText(part_name=part_name, tree=tree, text=separator.join(pieces), nodes=nodes)
+    return PartText(part_name=part_name, tree=tree, text="".join(text_pieces), nodes=nodes)
 
 
 def apply_replacements(part: PartText, spans: list[tuple[int, int, str]]) -> bool:
@@ -234,6 +281,17 @@ def apply_attribute_replacements(
     (ta sama zamknięta funkcja `detect_fn`), więc numeracja etykiet
     pozostaje spójna z resztą dokumentu.
 
+    UWAGA na `attribute_detect_fn` vs `detect_fn` w `process_docx`: wartości
+    atrybutów to prawie wyłącznie identyfikatory techniczne XML (nazwy flag
+    ustawień typu `bestFit`, maski bitowe, wartości `docProps/app.xml` typu
+    `Microsoft Macintosh Word`). Nie podajemy tu funkcji z podpiętymi
+    kolektorami "potencjalnie pominięte"/"niepewne trafienia" ani z
+    `sample_texts` — te pochodzą wyłącznie z realnej treści dokumentu.
+    Podpięcie kolektorów pod atrybuty zalewało ekran weryfikacji fałszywymi
+    "pominiętymi" fragmentami czysto technicznych nazw (realny błąd na
+    dokumencie demo: `Title`, `bestFit`, `doNotCompress` w panelu
+    "potencjalnie pominięte").
+
     Uwaga bezpieczeństwa: w plikach `.rels` atrybut `Target` bywa
     WEWNĘTRZNĄ ścieżką do innej części pakietu (np. `docProps/thumbnail.jpeg`,
     `media/image1.png`) — musi zostać dosłownie nietknięty, inaczej podmiana
@@ -293,6 +351,8 @@ def process_docx(
     input_path: str | Path,
     output_path: str | Path,
     detect_fn: Callable[[str], list[tuple[int, int, str]]],
+    attribute_detect_fn: Callable[[str], list[tuple[int, int, str]]] | None = None,
+    metadata_detect_fn: Callable[[str], list[tuple[int, int, str]]] | None = None,
 ) -> list[str]:
     """Wczytuje .docx, uruchamia `detect_fn` na tekście każdej istotnej części
     pakietu, nakłada podmiany i zapisuje wynikowy plik, zachowując resztę
@@ -300,6 +360,20 @@ def process_docx(
 
     `detect_fn` przyjmuje złączony tekst części i zwraca listę
     (start, end, etykieta) do podmiany.
+
+    `attribute_detect_fn` (opcjonalny): funkcja użyta do skanowania WARTOŚCI
+    atrybutów XML zamiast `detect_fn` — podłącz pod niej wariant BEZ
+    kolektorów "potencjalnie pominięte"/"niepewne"/`sample_texts` (patrz
+    docstring `apply_attribute_replacements` po uzasadnienie). `None` = użyj
+    `detect_fn` (zachowanie historyczne, dla wywołań bez rozróżnienia).
+
+    `metadata_detect_fn` (opcjonalny): funkcja użyta do skanowania TEKSTU
+    części metadanych `docProps/*` zamiast `detect_fn` — ten sam wzorzec
+    co atrybuty: pełna detekcja i podmiany (dc:creator potrafi nieść
+    nazwisko autora pisma!), ale bez kolektorów. Techniczne wartości
+    metadanych (`Microsoft Macintosh Word`, `Normal.dotm`, puste `Title`)
+    to nie "treść dokumentu" — ich fragmenty NIE mogą zalewać panelu
+    "potencjalnie pominięte". `None` = użyj `detect_fn`.
 
     Zwraca listę nazw części, w których faktycznie coś podmieniono
     (do celów logowania bez treści — patrz higiena logów w planie).
@@ -327,11 +401,13 @@ def process_docx(
 
         part_changed = False
         if part.text:
-            spans = detect_fn(part.text)
+            text_fn = metadata_detect_fn if (name.startswith("docProps/") and metadata_detect_fn is not None) else detect_fn
+            spans = text_fn(part.text)
             if apply_replacements(part, spans):
                 part_changed = True
 
-        if apply_attribute_replacements(name, part.tree.getroot(), detect_fn):
+        attr_fn = attribute_detect_fn if attribute_detect_fn is not None else detect_fn
+        if apply_attribute_replacements(name, part.tree.getroot(), attr_fn):
             part_changed = True
 
         if part_changed:
